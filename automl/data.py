@@ -83,10 +83,10 @@ def load_era5(var: str,
             day: int,
             hour: int,
             era_data_dir: str,
-            pressure_level=None,
+            pressure_levels=None,
             ):
     
-    if pressure_level is None:
+    if pressure_levels is None:
         if var not in ERA5_SURFACE_VARS + ERA5_STATIC_VARS:
             raise ValueError(f'Variable {var} not found in possible surface variable names')
         data_type = 'surface'
@@ -119,14 +119,16 @@ def load_era5(var: str,
                 
         # Have to do some funny stuff with offsets to ensure the right hours are being aggregated,
         # and labelled in the right way
-        da[var] = da.resample(time='6h', 
+        da = da.resample(time='6h', 
                             label='right', 
                             offset=datetime.timedelta(hours=1), # Offset of grouping
                             loffset =datetime.timedelta(hours=-1) # Label offset
                             ).sum()
         
-    if pressure_level is not None:
-        da = da.sel(level=pressure_level)
+    if pressure_levels is not None:
+        da = da.sel(level=pressure_levels)
+    
+    da.name = var
     
     return da
 
