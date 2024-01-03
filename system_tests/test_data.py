@@ -17,7 +17,7 @@ from automl import data
     
 class TestLoad(unittest.TestCase):
     
-    def test_load_era5_surface(self):
+    def test_load_era5(self):
 
         year = 2016
         month = 1
@@ -63,14 +63,8 @@ class TestLoad(unittest.TestCase):
         # Check lat and long coordinates are all the same
         self.assertEqual(len(set(lat_coords)), 1)
         self.assertEqual(len(set(lon_coords)), 1)
-
-    def test_load_era5_plevels(self):
-
-        year = 2016
-        month = 1
-        day = 1
-        hour = 12
-
+        
+        ### Pressure level vars
         lat_coords = []
         lon_coords = []
 
@@ -98,6 +92,53 @@ class TestLoad(unittest.TestCase):
         # Check lat and long coordinates are all the same
         self.assertEqual(len(set(lat_coords)), 1)
         self.assertEqual(len(set(lon_coords)), 1)
+
+    def test_load_era5_static(self):
+
+        year = 2016
+        month = 1
+        day = 1
+        hour = 12
+
+        ds = data.load_era5_static(year, month, day, hour)
+        
+        self.assertIsInstance(ds, xr.Dataset)
+        
+        self.assertListEqual(sorted(ds.coords), ['lat', 'lon'])
+        
+    def test_load_era5_surface(self):
+
+        year = 2016
+        month = 1
+        day = 1
+        hour = 18
+
+        ds = data.load_era5_surface(year, month, day, hour)
+        
+        self.assertIsInstance(ds, xr.Dataset)
+        
+        self.assertListEqual(sorted(ds.coords), ['datetime', 'lat', 'lon', 'time'])
+        self.assertDictEqual({'lon': 1440, 'lat': 721, 'time': 3, 'batch': 1}, dict(ds.dims))
+
+        for v in ds.data_vars:
+            self.assertFalse(np.any(np.isnan(ds[v].values)))
+            
+    def test_load_era5_plevels(self):
+
+        year = 2016
+        month = 1
+        day = 1
+        hour = 18
+
+        ds = data.load_era5_plevel(year, month, day, hour)
+        
+        self.assertIsInstance(ds, xr.Dataset)
+        
+        self.assertListEqual(sorted(ds.coords), ['datetime', 'lat', 'level', 'lon', 'time'])
+        self.assertDictEqual({'lon': 1440, 'lat': 721, 'level': 37, 'time': 3, 'batch': 1}, dict(ds.dims))
+
+        for v in ds.data_vars:
+            self.assertFalse(np.any(np.isnan(ds[v].values)))
         
 if __name__ == '__main__':
     unittest.main()

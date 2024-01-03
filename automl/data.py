@@ -83,8 +83,26 @@ def load_era5(var: str,
             day: int,
             hour: int,
             era_data_dir: str,
-            pressure_levels=None,
+            pressure_levels: list=None,
             ):
+    """Load ERA5 data, particularly focused towards data that the Graphcast model expects (6 hourly)
+
+    Args:
+        var (str): variable name
+        year (int): year
+        month (int): month
+        day (int): day
+        hour (int): hour
+        era_data_dir (str): folder containing era5 data
+        pressure_levels (_type_, optional): _description_. Defaults to None.
+
+    Raises:
+        ValueError: _description_
+        ValueError: _description_
+
+    Returns:
+        _type_: _description_
+    """
     
     if pressure_levels is None:
         if var not in ERA5_SURFACE_VARS + ERA5_STATIC_VARS:
@@ -94,6 +112,9 @@ def load_era5(var: str,
         if var not in ERA5_PLEVEL_VARS:
             raise ValueError(f'Variable {var} not found in possible atmospheric variable names')
         data_type = 'plevels'
+        
+        if isinstance(pressure_levels , tuple):
+            pressure_levels = list(pressure_levels)
 
     if var != 'total_precipitation_6hr':
         time_sel = [datetime.datetime(year,month, day, hour)]
@@ -132,71 +153,48 @@ def load_era5(var: str,
     
     return da
 
-def load_era5_static(year, month):
+def load_era5_static(year, month, day, era5_data_dir=DATASET_FOLDER):
     
-    static_das = {}
-    rename_dict = {}
+    static_das = []
 
     for var in tqdm(gc.STATIC_VARS):
 
-        if var == 'geopotential_at_surface':
-            var = 'geopotential'
-            
-        folder_name = 'surface'
-        tmp_da = load_clean_dataarray(os.path.join(DATASET_FOLDER, folder_name, f'era5_{var}_{year}{month:02d}.nc'), 
-                                        add_batch_dim=False)
-        tmp_da = tmp_da.isel(time=0)
-        static_das[var] = tmp_da
-        rename_dict[tmp_da.name] = var
-    
-    rename_dict['z'] = 'geopotential_at_surface'
+        da = load_era5(var=var,
+                       year=year,
+                       month=month, 
+                       day=day,
+                       hour=hour,
+                       era_data_dir=era5_data_dir)
+        static_das.append(da)
 
-    static_ds = xr.merge(static_das.values())
-    static_ds = static_ds.rename(rename_dict)
+    static_ds = xr.merge(static_das)
+    static_ds = static_ds.isel(time=0)
     static_ds = static_ds.drop_vars('time')
-
-    # Check lat values are correctly ordered
-    assert static_ds.lat[0] < 0 
-    assert static_ds.lat[-1] > 0
     
     return static_ds
 
-def load_era5_surface(year, month):
+def load_era5_surface(year, month, day, hour, era5_data_dir=DATASET_FOLDER):
     
     surf_das = {}
-    rename_dict = {}
-
+    
+    time_sel = pd.date_range(start=datetime.datetime(year,month,day,hour) - datetime.timedelta(hours=12), 
+                                 periods=3, 
+                                 freq='6h')
+    
     for var in tqdm(gc.TARGET_SURFACE_VARS + gc.EXTERNAL_FORCING_VARS):
 
-        if var == 'total_precipitation_6hr':
-            var = 'total_precipitation'
+        das = []
+        for dt in time_sel:
+            da = load_era5(var, dt.year, dt.month, dt.day, dt.hour, era_data_dir=era5_data_dir)
+            das.append(da)
             
-        folder_name = 'surface'
-        tmp_da = load_clean_dataarray(os.path.join(DATASET_FOLDER, folder_name, f'era5_{var}_{year}{1:02d}.nc'),
-                                        add_batch_dim=True,
-                                        )
-        if var != 'total_precipitation':
-            time_sel = pd.date_range(start=datetime.datetime(year,month, 1, 6), periods=3, freq='6h')
-        else:
-            time_sel = pd.date_range(start=datetime.datetime(year,month, 1, 1), periods=18, freq='1h')
-        tmp_da = tmp_da.sel(time=time_sel)
+        tmp_da = xr.concat(das, dim='time')
+        tmp_da = tmp_da.expand_dims({'batch': 1})
 
         surf_das[var] = tmp_da
-        rename_dict[tmp_da.name] = var
-        
-        if var == 'total_precipitation':
-            # Have to do some funny stuff with offsets to ensure the right hours are being aggregated,
-            # and labelled in the right way
-            surf_das[var] = tmp_da.resample(time='6h', 
-                                            label='right', 
-                                            offset=datetime.timedelta(hours=1), # Offset of grouping
-                                            loffset =datetime.timedelta(hours=-1) # Label offset
-                                            ).sum()
-            rename_dict[tmp_da.name] = 'total_precipitation_6hr'
             
     surface_ds = xr.merge(surf_das.values())
-    surface_ds = surface_ds.rename(rename_dict)
-
+    
     assert sorted(surface_ds.data_vars) == sorted(gc.EXTERNAL_FORCING_VARS + gc.TARGET_SURFACE_VARS )
 
     # Add datetime coordinate
@@ -206,25 +204,29 @@ def load_era5_surface(year, month):
     
     return surface_ds
 
-def load_era5_plevel(year, month):
+def load_era5_plevel(year, month, day, hour, pressure_levels=gc.PRESSURE_LEVELS_ERA5_37,
+                     era5_data_dir=DATASET_FOLDER):
     
     plevel_das = {}
-    rename_dict = {}
     
-    time_sel = pd.date_range(start=datetime.datetime(year, month, 1, 6), periods=3, freq='6h')
+    time_sel = pd.date_range(start=datetime.datetime(year,month,day,hour) - datetime.timedelta(hours=12), 
+                                 periods=3, 
+                                 freq='6h')
 
     for var in tqdm(gc.TARGET_ATMOSPHERIC_VARS):
 
-        folder_name = 'plevels'
-        tmp_da = load_clean_dataarray(os.path.join(DATASET_FOLDER, folder_name, f'era5_{var}_{year}{month:02d}.nc'),
-                                        add_batch_dim=True)
+        das = []
+        for dt in time_sel:
+            da = load_era5(var, dt.year, dt.month, dt.day, dt.hour, era_data_dir=era5_data_dir,
+                        pressure_levels=pressure_levels)
+            das.append(da)
+            
+        tmp_da = xr.concat(das, dim='time')
+        tmp_da = tmp_da.expand_dims({'batch': 1})
 
-        tmp_da = tmp_da.sel(time=time_sel)
         plevel_das[var] = tmp_da
-        rename_dict[tmp_da.name] = var
 
     plevel_ds = xr.merge(plevel_das.values())
-    plevel_ds = plevel_ds.rename(rename_dict)
 
     assert sorted(plevel_ds.data_vars) == sorted(gc.TARGET_ATMOSPHERIC_VARS)
     

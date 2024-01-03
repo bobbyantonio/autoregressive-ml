@@ -218,20 +218,21 @@ if __name__ == '__main__':
     args = parser.parse_args()
     year = args.year
     month = args.month
+    day = args.day
     
     logger.info(f'Platform: {xla_bridge.get_backend().platform}')
 
     ########
     # Static variables
-    static_ds = data.load_era5_static(year=year, month=month)
+    static_ds = data.load_era5_static(year=year, month=month, day=day)
 
     ######
     # Surface
-    surface_ds = data.load_era5_surface(year=year, month=month)
+    surface_ds = data.load_era5_surface(year=year, month=month, day=day, hour=18)
 
     #############
     # Pressure levels 
-    plevel_ds = data.load_era5_plevel(year=year, month=month)
+    plevel_ds = data.load_era5_plevel(year=year, month=month, day=day, hour=18)
     prepared_ds = xr.merge([static_ds, surface_ds, plevel_ds])
     prepared_ds = convert_to_relative_time(prepared_ds, prepared_ds['time'][1])
 
