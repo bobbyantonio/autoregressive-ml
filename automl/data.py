@@ -12,7 +12,10 @@ DATASET_FOLDER = str(HOME / 'dataset')
 
 ERA5_SURFACE_VARS = list(gc.TARGET_SURFACE_VARS) + list(gc.EXTERNAL_FORCING_VARS)
 ERA5_PLEVEL_VARS = list(gc.TARGET_ATMOSPHERIC_VARS)
+ERA5_STATIC_VARS = list(gc.STATIC_VARS)
 
+ERA5_VARNAME_LOOKUP = {'total_precipitation_6hr': 'total_precipitation',
+                       'geopotential_at_surface': 'geopotential'}
 
 def format_dataarray(da):
     
@@ -84,7 +87,7 @@ def load_era5(var: str,
             ):
     
     if pressure_level is None:
-        if var not in ERA5_SURFACE_VARS:
+        if var not in ERA5_SURFACE_VARS + ERA5_STATIC_VARS:
             raise ValueError(f'Variable {var} not found in possible surface variable names')
         data_type = 'surface'
     else:
@@ -97,7 +100,8 @@ def load_era5(var: str,
         era5_var_name = var
     else:
         time_sel = pd.date_range(start=datetime.datetime(year,month,day,hour) - datetime.timedelta(hours=5), periods=6, freq='1h')
-        era5_var_name = 'total_precipitation'
+    
+    era5_var_name = ERA5_VARNAME_LOOKUP.get(var, var)
         
     fps = set([f"era5_{era5_var_name}_{item.strftime('%Y%m')}.nc" for item in time_sel])
     
@@ -106,6 +110,7 @@ def load_era5(var: str,
     for fp in fps:
         da = xr.load_dataarray(os.path.join(era_data_dir, data_type, fp))
         da = format_dataarray(da)
+    
         das.append(da)
     da = xr.concat(das, dim='time')
     da = da.sel(time=time_sel)
@@ -123,7 +128,7 @@ def load_era5(var: str,
     if pressure_level is not None:
         da = da.sel(level=pressure_level)
     
-    return da.to_dataset()
+    return da
 
 def load_era5_static(year, month):
     
