@@ -1,0 +1,25 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "fetch_era5",
+            "type": "python",
+            "request": "launch",
+            "module": "data_prep.fetch_era5",
+            "justMyCode": true,
+            "args": ["--year", "2018", "--output-dir", "/home/a/antonio/repos/graphcast-ox", "--vars", "toa_incident_solar_radiation"]
+        },
+        {
+            "name": "autoregression",
+            "type": "python",
+            "request": "launch",
+            "module": "scripts.autoregression",
+            "justMyCode": true,
+            "args": ["--output-dir", "/home/a/antonio/repos/graphcast-ox/dataset/predictions", "--num-steps", 
+            "5", "--year", "2016", "--month", "1", "--day", "1", "--var-to-replace", "total_precipitation_6hr"]
+        }
+    ]
+}
