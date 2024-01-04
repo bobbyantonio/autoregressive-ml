@@ -224,7 +224,7 @@ if __name__ == '__main__':
 
     ########
     # Static variables
-    static_ds = data.load_era5_static(year=year, month=month, day=day)
+    static_ds = data.load_era5_static(year=year, month=month, day=day, hour=18)
 
     ######
     # Surface
@@ -236,10 +236,12 @@ if __name__ == '__main__':
     prepared_ds = xr.merge([static_ds, surface_ds, plevel_ds])
     prepared_ds = convert_to_relative_time(prepared_ds, prepared_ds['time'][1])
 
+    ##############
+    # Load forcing data for targets
     t0 = prepared_ds['datetime'][0][1].values
 
     # Note: Solar radiation is assumed to be in 6hr intervals
-    solar_radiation_ds = load_clean_dataarray(os.path.join(DATASET_FOLDER, f'surface/era5_toa_incident_solar_radiation_{year}{month:02d}.nc'), add_batch_dim=True)
+    solar_radiation_ds = load_clean_dataarray(os.path.join(DATASET_FOLDER, f'surface/era5_toa_incident_solar_radiation/{year}/era5_toa_incident_solar_radiation_{year}{month:02d}.nc'), add_batch_dim=True)
     solar_radiation_ds = add_datetime(solar_radiation_ds, start=solar_radiation_ds['time'].values[0], periods=len(solar_radiation_ds['time']), freq='6h')
     solar_radiation_ds = convert_to_relative_time(solar_radiation_ds, zero_time=t0)
 
@@ -251,6 +253,7 @@ if __name__ == '__main__':
     ts_to_fill = dts_to_fill - t0
     future_forcings = solar_radiation_ds.sel(time=ts_to_fill).to_dataset()
     future_forcings = future_forcings.rename({'tisr': 'toa_incident_solar_radiation'})
+    
     ############################
     
     if args.var_to_replace is not None:

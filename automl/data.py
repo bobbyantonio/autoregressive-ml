@@ -8,7 +8,7 @@ import pandas as pd
 from graphcast import graphcast as gc
 
 HOME = Path(__file__).parents[1]
-DATASET_FOLDER = str(HOME / 'dataset')
+DATASET_FOLDER = '~/nobackups/era5'
 
 ERA5_SURFACE_VARS = list(gc.TARGET_SURFACE_VARS) + list(gc.EXTERNAL_FORCING_VARS)
 ERA5_PLEVEL_VARS = list(gc.TARGET_ATMOSPHERIC_VARS)
@@ -124,7 +124,7 @@ def load_era5(var: str,
     
     era5_var_name = ERA5_VARNAME_LOOKUP.get(var, var)
         
-    fps = set([f"era5_{era5_var_name}_{item.strftime('%Y%m')}.nc" for item in time_sel])
+    fps = set([f"{era5_var_name}/{item.strftime('%Y')}/era5_{era5_var_name}_{item.strftime('%Y%m%d')}.nc" for item in time_sel])
     
     das = []
     
@@ -153,7 +153,7 @@ def load_era5(var: str,
     
     return da
 
-def load_era5_static(year, month, day, era5_data_dir=DATASET_FOLDER):
+def load_era5_static(year, month, day, hour=1, era5_data_dir=DATASET_FOLDER):
     
     static_das = []
 
@@ -163,7 +163,7 @@ def load_era5_static(year, month, day, era5_data_dir=DATASET_FOLDER):
                        year=year,
                        month=month, 
                        day=day,
-                       hour=hour,
+                       hour=hour, 
                        era_data_dir=era5_data_dir)
         static_das.append(da)
 

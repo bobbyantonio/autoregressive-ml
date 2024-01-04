@@ -8,9 +8,19 @@
             "name": "fetch_era5",
             "type": "python",
             "request": "launch",
-            "module": "data_prep.fetch_era5",
+            "module": "automl.fetch_era5",
             "justMyCode": true,
-            "args": ["--year", "2018", "--output-dir", "/home/a/antonio/repos/graphcast-ox", "--vars", "toa_incident_solar_radiation"]
+            "args": ["--year", "2018", "--output-dir", "/home/a/antonio/repos/autoregressive-ml/dataset", 
+            "--vars", "toa_incident_solar_radiation", "--days", "1", "2", "--months", "1", "2"]
+        },
+        {
+            "name": "fetch_era5_surf",
+            "type": "python",
+            "request": "launch",
+            "module": "automl.fetch_era5",
+            "justMyCode": true,
+            "args": ["--year", "2016", "--output-dir", "/home/a/antonio/nobackups/era5", 
+            "--surface", "--days", "1", "2", "--months", "1", "2"]
         },
         {
             "name": "autoregression",

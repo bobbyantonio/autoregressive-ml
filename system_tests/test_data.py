@@ -8,7 +8,7 @@ import pandas as pd
 from pathlib import Path
 
 HOME = Path(__file__).parents[1]
-data_folder = str(HOME / 'dataset')
+data_folder = '/home/a/antonio/nobackups/era5/'
 
 sys.path.append(str(HOME))
 
@@ -27,9 +27,9 @@ class TestLoad(unittest.TestCase):
         lat_coords = []
         lon_coords = []
 
-        # vars = data.ERA5_SURFACE_VARS
+
         vars = data.ERA5_STATIC_VARS + data.ERA5_SURFACE_VARS
-        # for v in tqdm(['total_precipitation_6hr']):
+
         for v in tqdm(vars):
     
             da1 = data.load_era5(var=v, year=year, month=month, day=day, hour=hour,
@@ -52,7 +52,7 @@ class TestLoad(unittest.TestCase):
             
             # TODO: test precip sums over the right hours
             if v == 'total_precipitation_6hr':
-                da = xr.load_dataarray(os.path.join(data_folder, 'surface', f"era5_total_precipitation_{year}{month:02d}.nc"))
+                da = xr.load_dataarray(os.path.join(data_folder, 'surface', 'total_precipitation', str(year), f"era5_total_precipitation_{year}{month:02d}{day:02d}.nc"))
                 relevant_dates = pd.date_range(start=datetime.datetime(year,month,day,hour) - datetime.timedelta(hours=5), periods=6, freq='1h')
                 
                 self.assertEqual(max(relevant_dates), datetime.datetime(year,month,day,hour))
@@ -70,7 +70,7 @@ class TestLoad(unittest.TestCase):
 
         vars = data.ERA5_PLEVEL_VARS
         for v in tqdm(vars):
-    
+            
             da1 = data.load_era5(var=v, year=year, month=month, day=day, hour=hour,
                                     era_data_dir=data_folder, pressure_levels=[1000, 850])
 
@@ -85,9 +85,10 @@ class TestLoad(unittest.TestCase):
             # check that lat lon are ascending
             self.assertListEqual(list(da1[lat_var_name].values), sorted(da1[lat_var_name].values))
             self.assertListEqual(list(da1[lon_var_name].values), sorted(da1[lon_var_name].values))
-       
+    
             lat_coords.append(tuple(sorted(da1.coords[lat_var_name].values)))
             lon_coords.append(tuple(sorted(da1.coords[lon_var_name].values)))
+
                 
         # Check lat and long coordinates are all the same
         self.assertEqual(len(set(lat_coords)), 1)
