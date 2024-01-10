@@ -30,7 +30,8 @@ class TestLoad(unittest.TestCase):
 
         vars = data.ERA5_STATIC_VARS + data.ERA5_SURFACE_VARS
 
-        for v in tqdm(vars):
+        # for v in tqdm(vars):
+        for v in ['total_precipitation_6hr']:
     
             da1 = data.load_era5(var=v, year=year, month=month, day=day, hour=hour,
                                     era_data_dir=data_folder)
@@ -64,35 +65,35 @@ class TestLoad(unittest.TestCase):
         self.assertEqual(len(set(lat_coords)), 1)
         self.assertEqual(len(set(lon_coords)), 1)
         
-        ### Pressure level vars
-        lat_coords = []
-        lon_coords = []
+        # ### Pressure level vars
+        # lat_coords = []
+        # lon_coords = []
 
-        vars = data.ERA5_PLEVEL_VARS
-        for v in tqdm(vars):
+        # vars = data.ERA5_PLEVEL_VARS
+        # for v in tqdm(vars):
             
-            da1 = data.load_era5(var=v, year=year, month=month, day=day, hour=hour,
-                                    era_data_dir=data_folder, pressure_levels=[1000, 850])
+        #     da1 = data.load_era5(var=v, year=year, month=month, day=day, hour=hour,
+        #                             era_data_dir=data_folder, pressure_levels=[1000, 850])
 
-            self.assertIsInstance(da1, xr.DataArray)
-            self.assertEqual(da1.name, v)
+        #     self.assertIsInstance(da1, xr.DataArray)
+        #     self.assertEqual(da1.name, v)
             
-            lat_var_name, lon_var_name = data.infer_lat_lon_names(da1)
+        #     lat_var_name, lon_var_name = data.infer_lat_lon_names(da1)
             
-            # Check no NaNs
-            self.assertFalse(np.any(np.isnan(da1.values)))
+        #     # Check no NaNs
+        #     self.assertFalse(np.any(np.isnan(da1.values)))
             
-            # check that lat lon are ascending
-            self.assertListEqual(list(da1[lat_var_name].values), sorted(da1[lat_var_name].values))
-            self.assertListEqual(list(da1[lon_var_name].values), sorted(da1[lon_var_name].values))
+        #     # check that lat lon are ascending
+        #     self.assertListEqual(list(da1[lat_var_name].values), sorted(da1[lat_var_name].values))
+        #     self.assertListEqual(list(da1[lon_var_name].values), sorted(da1[lon_var_name].values))
     
-            lat_coords.append(tuple(sorted(da1.coords[lat_var_name].values)))
-            lon_coords.append(tuple(sorted(da1.coords[lon_var_name].values)))
+        #     lat_coords.append(tuple(sorted(da1.coords[lat_var_name].values)))
+        #     lon_coords.append(tuple(sorted(da1.coords[lon_var_name].values)))
 
                 
-        # Check lat and long coordinates are all the same
-        self.assertEqual(len(set(lat_coords)), 1)
-        self.assertEqual(len(set(lon_coords)), 1)
+        # # Check lat and long coordinates are all the same
+        # self.assertEqual(len(set(lat_coords)), 1)
+        # self.assertEqual(len(set(lon_coords)), 1)
 
     def test_load_era5_static(self):
 

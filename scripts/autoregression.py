@@ -43,7 +43,8 @@ sys.path.append('/home/a/antonio/repos/graphcast-ox/data_prep')
 
 from automl import data
 
-DATASET_FOLDER = '/home/a/antonio/repos/graphcast-ox/dataset'
+DATASET_FOLDER = '/home/a/antonio/nobackups/era5'
+GRAPHCAST_DIR = '/home/a/antonio/repos/graphcast-ox'
 OUTPUT_VARS = [
     '2m_temperature', 'total_precipitation_6hr', '10m_v_component_of_wind', '10m_u_component_of_wind', 'specific_humidity'
 ]
@@ -55,7 +56,7 @@ NONEGATIVE_VARS = [
     "specific_humidity",
 ]
 
-params_file = SimpleNamespace(value='/home/a/antonio/repos/graphcast-ox/params/params_GraphCast-ERA5_1979-2017-resolution_0.25-pressure_levels_37-mesh_2to6-precipitation_input_and_output.npz')
+params_file = SimpleNamespace(value=os.path.join(GRAPHCAST_DIR, 'params/params_GraphCast-ERA5_1979-2017-resolution_0.25-pressure_levels_37-mesh_2to6-precipitation_input_and_output.npz'))
 
     # @title Load the model
 with open(f"{params_file.value}", 'rb') as f:
@@ -65,15 +66,21 @@ params = ckpt.params
 model_config = ckpt.model_config
 task_config = ckpt.task_config
 
-with open("/home/a/antonio/repos/graphcast-ox/stats/diffs_stddev_by_level.nc","rb") as f:
+with open(os.path.join(GRAPHCAST_DIR, "stats/diffs_stddev_by_level.nc"),"rb") as f:
     diffs_stddev_by_level = xr.load_dataset(f).compute()
-with open("/home/a/antonio/repos/graphcast-ox/stats/mean_by_level.nc", "rb") as f:
+with open(os.path.join(GRAPHCAST_DIR, "stats/mean_by_level.nc"), "rb") as f:
     mean_by_level = xr.load_dataset(f).compute()
-with open("/home/a/antonio/repos/graphcast-ox/stats/stddev_by_level.nc","rb") as f:
+with open(os.path.join(GRAPHCAST_DIR, "stats/stddev_by_level.nc"),"rb") as f:
     stddev_by_level = xr.load_dataset(f).compute()
 
 def get_all_visible_methods(obj):
     return [item for item in dir(obj) if not item.startswith('_')]
+
+def unpack_np_datetime(dt):
+    
+    converted_dt = pd.to_datetime(dt)
+    
+    return converted_dt.year, converted_dt.month, converted_dt.day, converted_dt.hour
 
 def format_dataarray(da):
     
@@ -96,12 +103,16 @@ def load_clean_dataarray(fp, add_batch_dim=False):
 
     return da
 
-def add_datetime(ds, start: str,
-                 periods: int,
+def add_datetime(ds, start: str=None,
+                 periods: int=None,
+                 dt_arr: np.array=None,
                  freq: str='6h',
                  ):
-    
-    dt_arr = np.expand_dims(pd.date_range(start=start, periods=periods, freq=freq),0)
+    if dt_arr is None:
+        dt_arr = np.expand_dims(pd.date_range(start=start, periods=periods, freq=freq),0)
+    else:
+        dt_arr = np.expand_dims(dt_arr,0)
+        
     ds = ds.assign_coords(datetime=(('batch', 'time'),  dt_arr))
     return ds
 
@@ -221,6 +232,8 @@ if __name__ == '__main__':
     day = args.day
     
     logger.info(f'Platform: {xla_bridge.get_backend().platform}')
+    
+    os.makedirs(args.output_dir, exist_ok=True)
 
     ########
     # Static variables
@@ -238,21 +251,29 @@ if __name__ == '__main__':
 
     ##############
     # Load forcing data for targets
+    print('--- Loading forcings ', flush=True)
+    
     t0 = prepared_ds['datetime'][0][1].values
-
-    # Note: Solar radiation is assumed to be in 6hr intervals
-    solar_radiation_ds = load_clean_dataarray(os.path.join(DATASET_FOLDER, f'surface/era5_toa_incident_solar_radiation/{year}/era5_toa_incident_solar_radiation_{year}{month:02d}.nc'), add_batch_dim=True)
-    solar_radiation_ds = add_datetime(solar_radiation_ds, start=solar_radiation_ds['time'].values[0], periods=len(solar_radiation_ds['time']), freq='6h')
-    solar_radiation_ds = convert_to_relative_time(solar_radiation_ds, zero_time=t0)
-
+    
     ds_slice = prepared_ds.isel(time=slice(-1, None))
-    ds_final_datetime = ds_slice['datetime'][0][0]
-    ds_final_time = ds_slice['time'][0]
+    ds_final_datetime = ds_slice['datetime'][0][0].values
+    
+    dts_to_fill = [ds_final_datetime + np.timedelta64(6*n, 'h') for n in range(1, args.num_steps)]
 
-    dts_to_fill = np.array([dt.values for dt in solar_radiation_ds['datetime'][0] if dt > ds_final_datetime])
-    ts_to_fill = dts_to_fill - t0
-    future_forcings = solar_radiation_ds.sel(time=ts_to_fill).to_dataset()
-    future_forcings = future_forcings.rename({'tisr': 'toa_incident_solar_radiation'})
+    solar_rad_das = []
+    for dt in dts_to_fill:
+        y, m, d, h = unpack_np_datetime(dt)
+        solar_rad_das.append(data.load_era5(var='toa_incident_solar_radiation',
+                                            year=y,
+                                            month=m,
+                                            day=d,
+                                            hour=h,
+                                            era_data_dir=DATASET_FOLDER))
+
+    future_forcings = xr.concat(solar_rad_das, dim='time').to_dataset()
+    future_forcings = add_datetime(future_forcings, dt_arr=dts_to_fill)
+    future_forcings = convert_to_relative_time(future_forcings, zero_time=t0)
+
     
     ############################
     

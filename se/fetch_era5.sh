@@ -10,5 +10,5 @@ source ~/.bashrc
 conda activate base
 
 # srun python /home/a/antonio/repos/autoregressive-ml/automl/fetch_era5.py --year 2016 --output-dir /home/a/antonio/nobackups/era5 --surface --months 1 2 3;
-srun python /home/a/antonio/repos/autoregressive-ml/automl/fetch_era5.py --year 2016 --output-dir /home/a/antonio/nobackups/era5 --plevels --months 1 --days 1;
-# srun python /home/a/antonio/repos/autoregressive-ml/automl/fetch_era5.py --year 2016 --output-dir /home/a/antonio/nobackups/era5 --plevels --pressure-level 1000 --months 1 2 3 --vars specific_humidity;
+# srun python /home/a/antonio/repos/autoregressive-ml/automl/fetch_era5.py --year 2016 --output-dir /home/a/antonio/nobackups/era5 --plevels --months 1 --days 1;
+srun python /home/a/antonio/repos/autoregressive-ml/automl/fetch_era5.py --year 2016 --output-dir /home/a/antonio/nobackups/era5 --plevels --pressure-level 1000 --months 4 --vars specific_humidity;

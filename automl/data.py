@@ -143,8 +143,9 @@ def load_era5(var: str,
         da = da.resample(time='6h', 
                             label='right', 
                             offset=datetime.timedelta(hours=1), # Offset of grouping
-                            loffset =datetime.timedelta(hours=-1) # Label offset
                             ).sum()
+        offset = pd.tseries.frequencies.to_offset("1h")
+        da['time'] = da.get_index("time") - offset
         
     if pressure_levels is not None:
         da = da.sel(level=pressure_levels)
