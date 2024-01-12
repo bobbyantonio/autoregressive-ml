@@ -43,7 +43,7 @@ sys.path.append('/home/a/antonio/repos/graphcast-ox/data_prep')
 
 from automl import data
 
-DATASET_FOLDER = '/home/a/antonio/nobackups/era5'
+DATASET_FOLDER = '/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5'
 GRAPHCAST_DIR = '/home/a/antonio/repos/graphcast-ox'
 OUTPUT_VARS = [
     '2m_temperature', 'total_precipitation_6hr', '10m_v_component_of_wind', '10m_u_component_of_wind', 'specific_humidity'
@@ -219,7 +219,9 @@ if __name__ == '__main__':
     parser.add_argument('--month', type=int, default=1,
                         help='Month to start on')
     parser.add_argument('--day', type=int, default=1,
-                    help='Day of month to start on') 
+                    help='Day of month to start on')
+    parser.add_argument('--hour-start', default='random',
+                    help='First target time to predict for') 
     parser.add_argument('--load-era5', action='store_true',
                         help='Load from ERA5') 
     parser.add_argument('--var-to-replace', type=str, default=None,
@@ -231,21 +233,33 @@ if __name__ == '__main__':
     month = args.month
     day = args.day
     
+    if args.hour_start == 'random':
+        if day == 1 and month ==1:
+            # Put here to prevent data issues when the first day in the data is selected
+            hour_start = 18
+        else:
+            hour_start = np.random.choice([0,6,12,18])
+    else:
+        hour_start = int(args.hour_start)
+    
     logger.info(f'Platform: {xla_bridge.get_backend().platform}')
     
     os.makedirs(args.output_dir, exist_ok=True)
+    all_datetimes = [datetime.datetime(year, month, day, hour_start - 12) + 
+                            datetime.timedelta(hours=6*n) for n in range(args.num_steps+2)]
+    time_lookup = { int((d - all_datetimes[1]).total_seconds()*1e9) : d for d in all_datetimes}
 
     ########
     # Static variables
-    static_ds = data.load_era5_static(year=year, month=month, day=day, hour=18)
+    static_ds = data.load_era5_static(year=year, month=month, day=day, hour=hour_start, era5_data_dir=DATASET_FOLDER)
 
     ######
     # Surface
-    surface_ds = data.load_era5_surface(year=year, month=month, day=day, hour=18)
+    surface_ds = data.load_era5_surface(year=year, month=month, day=day, hour=hour_start, era5_data_dir=DATASET_FOLDER)
 
     #############
     # Pressure levels 
-    plevel_ds = data.load_era5_plevel(year=year, month=month, day=day, hour=18)
+    plevel_ds = data.load_era5_plevel(year=year, month=month, day=day, hour=hour_start, era5_data_dir=DATASET_FOLDER)
     prepared_ds = xr.merge([static_ds, surface_ds, plevel_ds])
     prepared_ds = convert_to_relative_time(prepared_ds, prepared_ds['time'][1])
 
@@ -279,36 +293,25 @@ if __name__ == '__main__':
     
     if args.var_to_replace is not None:
         # Replace one of the vars with the ERA5 version
-        var_to_replace = 'total_precipitation_6hr'
-        num_autoregressive_steps = 120
-        target_datetimes = [datetime.datetime(year, month, 1, 12) + 
-                            datetime.timedelta(hours=6*(n+1)) for n in range(args.num_steps)]
 
-        if var_to_replace != 'total_precipitation_6hr':
-            era5_var_name = var_to_replace
-        else:
-            era5_var_name = 'total_precipitation'
+        target_datetimes = all_datetimes[2:]
+        
+        replacement_das = []
+        for dt in target_datetimes:
+            if args.var_to_replace in data.ERA5_SURFACE_VARS:
+                tmp_da = data.load_era5_surface(dt.year, dt.month, dt.day, dt.hour, era5_data_dir=DATASET_FOLDER, 
+                                                vars=[args.var_to_replace], gather_input_datetimes=False)
+            elif args.var_to_replace in data.ERA5_PLEVEL_VARS:
+                tmp_da = data.load_era5_plevel(dt.year, dt.month, dt.day, dt.hour, era5_data_dir=DATASET_FOLDER, 
+                                               vars=[args.var_to_replace], gather_input_datetimes=False)
+            else:
+                raise ValueError(f'Variable {args.var_to_replace} not found in surface or pressure level lists')
+            replacement_das.append(tmp_da)
             
-        if var_to_replace == 'specific_humidity':
-            data_type = 'plevels'
-            plevel_suffix = '_1000hPa'
-        else:
-            data_type = 'surface'
-            plevel_suffix = ''
-
-        era5_target_da = xr.load_dataarray(os.path.join(DATASET_FOLDER, f'{data_type}/era5_{era5_var_name}_201601{plevel_suffix}.nc'))
-        era5_target_da = data.format_dataarray(era5_target_da)
-
-        if var_to_replace == 'total_precipitation_6hr':
-            precip_datetimes = [datetime.datetime(year, month, 1, 6) + datetime.timedelta(hours=n) for n in range(6*(args.num_steps+1))]
-            era5_target_da = era5_target_da.sel(time=precip_datetimes)
-            era5_target_da = era5_target_da.resample(time='6h', label='right').sum()
-            
-        era5_target_da = era5_target_da.sel(time=target_datetimes)
-            
-        era5_target_da.name = var_to_replace
-        era5_target_da = convert_to_relative_time(era5_target_da, zero_time=t0)
-        era5_target_da = era5_target_da.expand_dims({'batch': 1})
+        era5_target_da = xr.concat(replacement_das, dim='time')
+        era5_target_da = convert_to_relative_time(era5_target_da, zero_time=t0)[args.var_to_replace]
+    else:
+        print('Skipping variable replacement since none specified', flush=True)
     
     ############################
 
@@ -372,11 +375,11 @@ if __name__ == '__main__':
             data_utils.add_derived_vars(current_forcings)
             current_forcings = current_forcings[list(task_config_dict['forcing_variables'])].drop_vars("datetime")
 
-        actual_target_time = current_forcings.coords["time"]  
+        actual_target_relative_time = current_forcings.coords["time"]  
         current_forcings = current_forcings.assign_coords(time=targets_chunk_time)
         current_forcings = current_forcings.compute()
         
-        if args.var_to_replace is not None:
+        if args.var_to_replace is not None and chunk_index > 0:
             ## Replace vars if appropriate
             if num_steps_per_chunk > 1:
                 raise ValueError('This code assumes chunks are always of size 1')
@@ -396,10 +399,10 @@ if __name__ == '__main__':
                     new_vals.append(new_val)
                     
                 else:
-                    new_vals.append(current_inputs[var_to_replace].sel(time=input_times[t_ix]))
+                    new_vals.append(current_inputs[args.var_to_replace].sel(time=input_times[t_ix]))
             
             new_da = xr.concat(new_vals, dim='time')
-            new_inputs = xr.merge([new_da, current_inputs[[v for v in current_inputs.data_vars if v != var_to_replace]]])
+            new_inputs = xr.merge([new_da, current_inputs[[v for v in current_inputs.data_vars if v != args.var_to_replace]]])
             
             new_inputs = new_inputs[list(current_inputs.data_vars)]
             new_inputs = new_inputs[sorted_input_coords_and_vars]
@@ -423,7 +426,7 @@ if __name__ == '__main__':
         next_frame = xr.merge([prediction, current_forcings])
 
         current_inputs = rollout._get_next_inputs(current_inputs, next_frame)
-        prediction = prediction.assign_coords(time=actual_target_time)
+        prediction = prediction.assign_coords(time=actual_target_relative_time+t0)
         
         if args.var_to_replace is not None:
             save_dir = os.path.join(args.output_dir, f'replace_{args.var_to_replace}')
@@ -433,7 +436,7 @@ if __name__ == '__main__':
         os.makedirs(save_dir, exist_ok=True)
         
         fp = os.path.join(save_dir, 
-                          f'pred_{year}{month:02d}01_n{chunk_index}.nc')
+                          f'pred_{year}{month:02d}{day:02d}_n{chunk_index}.nc')
 
         prediction[OUTPUT_VARS].isel(level=len(gc.PRESSURE_LEVELS_ERA5_37)-1).to_netcdf(fp)
         del prediction

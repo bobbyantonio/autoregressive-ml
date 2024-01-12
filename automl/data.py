@@ -154,7 +154,7 @@ def load_era5(var: str,
     
     return da
 
-def load_era5_static(year, month, day, hour=1, era5_data_dir=DATASET_FOLDER):
+def load_era5_static(year: int, month: int, day: int, hour: int=1, era5_data_dir: str=DATASET_FOLDER):
     
     static_das = []
 
@@ -174,15 +174,26 @@ def load_era5_static(year, month, day, hour=1, era5_data_dir=DATASET_FOLDER):
     
     return static_ds
 
-def load_era5_surface(year, month, day, hour, era5_data_dir=DATASET_FOLDER):
+def load_era5_surface(year: int, 
+                      month: int, 
+                      day: int, 
+                      hour: int, 
+                      gather_input_datetimes: bool=True,
+                      era5_data_dir: str=DATASET_FOLDER, 
+                      vars: list=ERA5_SURFACE_VARS):
     
+    if not isinstance(vars, list) and not isinstance(vars, tuple):
+        vars = [vars]
+        
     surf_das = {}
-    
     time_sel = pd.date_range(start=datetime.datetime(year,month,day,hour) - datetime.timedelta(hours=12), 
-                                 periods=3, 
-                                 freq='6h')
+                                    periods=3, 
+                                    freq='6h')
+    if not gather_input_datetimes:
+        time_sel = time_sel[-1:]
+        
     
-    for var in tqdm(gc.TARGET_SURFACE_VARS + gc.EXTERNAL_FORCING_VARS):
+    for var in tqdm(vars):
 
         das = []
         for dt in time_sel:
@@ -196,25 +207,39 @@ def load_era5_surface(year, month, day, hour, era5_data_dir=DATASET_FOLDER):
             
     surface_ds = xr.merge(surf_das.values())
     
-    assert sorted(surface_ds.data_vars) == sorted(gc.EXTERNAL_FORCING_VARS + gc.TARGET_SURFACE_VARS )
-
     # Add datetime coordinate
-    surface_ds = add_datetime(surface_ds,
-                              start=datetime.datetime(year,month, 1, 6),
-                              periods=3, freq='6h')
+    if gather_input_datetimes:
+        surface_ds = add_datetime(surface_ds,
+                                start=time_sel[0],
+                                periods=3, freq='6h')
+    else:
+        surface_ds = add_datetime(surface_ds,
+                                start=time_sel[0],
+                                periods=1, freq='6h')
     
     return surface_ds
 
-def load_era5_plevel(year, month, day, hour, pressure_levels=gc.PRESSURE_LEVELS_ERA5_37,
-                     era5_data_dir=DATASET_FOLDER):
+def load_era5_plevel(year: int,
+                     month: int, 
+                     day: int,
+                     hour: int,
+                     gather_input_datetimes: bool=True,
+                     pressure_levels: list=gc.PRESSURE_LEVELS_ERA5_37,
+                     era5_data_dir: str=DATASET_FOLDER, 
+                     vars: list=ERA5_PLEVEL_VARS):
+    
+    if not isinstance(vars, list) and not isinstance(vars, tuple):
+        vars = [vars]
     
     plevel_das = {}
     
     time_sel = pd.date_range(start=datetime.datetime(year,month,day,hour) - datetime.timedelta(hours=12), 
                                  periods=3, 
                                  freq='6h')
+    if not gather_input_datetimes:
+        time_sel = time_sel[-1:]
 
-    for var in tqdm(gc.TARGET_ATMOSPHERIC_VARS):
+    for var in tqdm(vars):
 
         das = []
         for dt in time_sel:
@@ -228,12 +253,15 @@ def load_era5_plevel(year, month, day, hour, pressure_levels=gc.PRESSURE_LEVELS_
         plevel_das[var] = tmp_da
 
     plevel_ds = xr.merge(plevel_das.values())
-
-    assert sorted(plevel_ds.data_vars) == sorted(gc.TARGET_ATMOSPHERIC_VARS)
     
     # Add datetime coordinate
-    plevel_ds = add_datetime(plevel_ds,
-                            start=datetime.datetime(year,month, 1, 6),
-                            periods=3, freq='6h')
+    if gather_input_datetimes:
+        plevel_ds = add_datetime(plevel_ds,
+                                start=time_sel[0],
+                                periods=3, freq='6h')
+    else:
+        plevel_ds = add_datetime(plevel_ds,
+                                start=time_sel[0],
+                                periods=1, freq='6h')
     
     return plevel_ds
