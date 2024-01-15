@@ -31,6 +31,7 @@ import pandas as pd
 import logging
 from pathlib import Path
 from jax.lib import xla_bridge
+from calendar import monthrange
 
 HOME = Path(__file__).parents[1]
 sys.path.append(str(HOME))
@@ -233,6 +234,9 @@ if __name__ == '__main__':
     month = args.month
     day = args.day
     
+    if day == -1:
+        day = monthrange(year=year, month=month)[-1]
+        
     if args.hour_start == 'random':
         if day == 1 and month ==1:
             # Put here to prevent data issues when the first day in the data is selected
@@ -245,8 +249,8 @@ if __name__ == '__main__':
     logger.info(f'Platform: {xla_bridge.get_backend().platform}')
     
     os.makedirs(args.output_dir, exist_ok=True)
-    all_datetimes = [datetime.datetime(year, month, day, hour_start - 12) + 
-                            datetime.timedelta(hours=6*n) for n in range(args.num_steps+2)]
+    all_datetimes = [datetime.datetime(year, month, day, hour_start) + 
+                            datetime.timedelta(hours=6*n - 12) for n in range(args.num_steps+2)]
     time_lookup = { int((d - all_datetimes[1]).total_seconds()*1e9) : d for d in all_datetimes}
 
     ########
