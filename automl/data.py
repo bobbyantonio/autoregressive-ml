@@ -191,7 +191,6 @@ def load_era5_surface(year: int,
                                     freq='6h')
     if not gather_input_datetimes:
         time_sel = time_sel[-1:]
-        
     
     for var in tqdm(vars):
 

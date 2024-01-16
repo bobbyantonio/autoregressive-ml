@@ -29,7 +29,7 @@
             "module": "scripts.autoregression",
             "justMyCode": true,
             "args": ["--output-dir", "/home/a/antonio/repos/graphcast-ox/dataset/predictions", "--num-steps", 
-            "2", "--year", "2016", "--month", "1", "--day", "1", "--hour", "18", "--var-to-replace", "total_precipitation_6hr"]
+            "5", "--year", "2016", "--month", "1", "--day", "1", "--hour", "18", "--var-to-replace", "2m_temperature", "--cache-inputs"]
         }
     ]
 }

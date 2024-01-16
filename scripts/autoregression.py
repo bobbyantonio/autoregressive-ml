@@ -24,6 +24,7 @@ import os, sys
 import datetime
 import haiku as hk
 import jax
+import pickle
 import numpy as np
 import xarray as xr
 from tqdm import tqdm
@@ -229,6 +230,8 @@ if __name__ == '__main__':
                         help="Variable to replace with ERA5 input during autoregression",
                         choices=gc.TARGET_SURFACE_VARS # For now limit to the surface vars
                         )
+    parser.add_argument('--cache-inputs', action='store_true',
+                        help='If active, then inputs will be cached to allow fast iteration')
     args = parser.parse_args()
     year = args.year
     month = args.month
@@ -253,67 +256,94 @@ if __name__ == '__main__':
                             datetime.timedelta(hours=6*n - 12) for n in range(args.num_steps+2)]
     time_lookup = { int((d - all_datetimes[1]).total_seconds()*1e9) : d for d in all_datetimes}
 
-    ########
-    # Static variables
-    static_ds = data.load_era5_static(year=year, month=month, day=day, hour=hour_start, era5_data_dir=DATASET_FOLDER)
+    if not args.cache_inputs or not os.path.exists('cached_inputs.nc'):
+        ########
+        # Static variables
+        static_ds = data.load_era5_static(year=year, month=month, day=day, hour=hour_start, era5_data_dir=DATASET_FOLDER)
 
-    ######
-    # Surface
-    surface_ds = data.load_era5_surface(year=year, month=month, day=day, hour=hour_start, era5_data_dir=DATASET_FOLDER)
+        ######
+        # Surface
+        surface_ds = data.load_era5_surface(year=year, month=month, day=day, hour=hour_start, era5_data_dir=DATASET_FOLDER)
 
-    #############
-    # Pressure levels 
-    plevel_ds = data.load_era5_plevel(year=year, month=month, day=day, hour=hour_start, era5_data_dir=DATASET_FOLDER)
-    prepared_ds = xr.merge([static_ds, surface_ds, plevel_ds])
-    prepared_ds = convert_to_relative_time(prepared_ds, prepared_ds['time'][1])
+        #############
+        # Pressure levels 
+        plevel_ds = data.load_era5_plevel(year=year, month=month, day=day, hour=hour_start, era5_data_dir=DATASET_FOLDER)
+        prepared_ds = xr.merge([static_ds, surface_ds, plevel_ds])
+        prepared_ds = convert_to_relative_time(prepared_ds, prepared_ds['time'][1])
 
-    ##############
-    # Load forcing data for targets
-    print('--- Loading forcings ', flush=True)
-    
-    t0 = prepared_ds['datetime'][0][1].values
-    
-    ds_slice = prepared_ds.isel(time=slice(-1, None))
-    ds_final_datetime = ds_slice['datetime'][0][0].values
-    
-    dts_to_fill = [ds_final_datetime + np.timedelta64(6*n, 'h') for n in range(1, args.num_steps)]
+        ##############
+        # Load forcing data for targets
+        print('--- Loading forcings ', flush=True)
+        
+        t0 = prepared_ds['datetime'][0][1].values
+        
+        ds_slice = prepared_ds.isel(time=slice(-1, None))
+        ds_final_datetime = ds_slice['datetime'][0][0].values
+        
+        dts_to_fill = [ds_final_datetime + np.timedelta64(6*n, 'h') for n in range(1, args.num_steps)]
 
-    solar_rad_das = []
-    for dt in dts_to_fill:
-        y, m, d, h = unpack_np_datetime(dt)
-        solar_rad_das.append(data.load_era5(var='toa_incident_solar_radiation',
-                                            year=y,
-                                            month=m,
-                                            day=d,
-                                            hour=h,
-                                            era_data_dir=DATASET_FOLDER))
+        solar_rad_das = []
+        for dt in dts_to_fill:
+            y, m, d, h = unpack_np_datetime(dt)
+            tmp_da = data.load_era5(var='toa_incident_solar_radiation',
+                                                year=y,
+                                                month=m,
+                                                day=d,
+                                                hour=h,
+                                                era_data_dir=DATASET_FOLDER)
+            tmp_da = tmp_da.expand_dims({'batch': 1})
+            solar_rad_das.append(tmp_da)
 
-    future_forcings = xr.concat(solar_rad_das, dim='time').to_dataset()
-    future_forcings = add_datetime(future_forcings, dt_arr=dts_to_fill)
-    future_forcings = convert_to_relative_time(future_forcings, zero_time=t0)
+        future_forcings = xr.concat(solar_rad_das, dim='time').to_dataset()
+        future_forcings = add_datetime(future_forcings, dt_arr=dts_to_fill)
+        future_forcings = convert_to_relative_time(future_forcings, zero_time=t0)
 
-    
+        ############################
+        
+        if args.cache_inputs:
+            with open('cached_inputs.nc', 'wb+') as ofh:
+                pickle.dump({'prepared_ds': prepared_ds,
+                            'future_forcings': future_forcings, 't0': t0}, ofh)
+    else:
+        with open('cached_inputs.nc', 'rb') as ifh:
+            data_dict = pickle.load(ifh)
+            
+        prepared_ds = data_dict['prepared_ds']
+        future_forcings = data_dict['future_forcings']
+        t0 = data_dict['t0']
+            
+        
     ############################
     
     if args.var_to_replace is not None:
         # Replace one of the vars with the ERA5 version
 
-        target_datetimes = all_datetimes[2:]
-        
-        replacement_das = []
-        for dt in target_datetimes:
-            if args.var_to_replace in data.ERA5_SURFACE_VARS:
-                tmp_da = data.load_era5_surface(dt.year, dt.month, dt.day, dt.hour, era5_data_dir=DATASET_FOLDER, 
-                                                vars=[args.var_to_replace], gather_input_datetimes=False)
-            elif args.var_to_replace in data.ERA5_PLEVEL_VARS:
-                tmp_da = data.load_era5_plevel(dt.year, dt.month, dt.day, dt.hour, era5_data_dir=DATASET_FOLDER, 
-                                               vars=[args.var_to_replace], gather_input_datetimes=False)
-            else:
-                raise ValueError(f'Variable {args.var_to_replace} not found in surface or pressure level lists')
-            replacement_das.append(tmp_da)
+        if not args.cache_inputs or not os.path.exists('cached_replacement_vars.nc'):
+            target_datetimes = all_datetimes[2:]
             
-        era5_target_da = xr.concat(replacement_das, dim='time')
-        era5_target_da = convert_to_relative_time(era5_target_da, zero_time=t0)[args.var_to_replace]
+            replacement_das = []
+            for dt in target_datetimes:
+                if args.var_to_replace in data.ERA5_SURFACE_VARS:
+                    tmp_da = data.load_era5_surface(dt.year, dt.month, dt.day, dt.hour, era5_data_dir=DATASET_FOLDER, 
+                                                    vars=[args.var_to_replace], gather_input_datetimes=False)
+                elif args.var_to_replace in data.ERA5_PLEVEL_VARS:
+                    tmp_da = data.load_era5_plevel(dt.year, dt.month, dt.day, dt.hour, era5_data_dir=DATASET_FOLDER, 
+                                                vars=[args.var_to_replace], gather_input_datetimes=False)
+                else:
+                    raise ValueError(f'Variable {args.var_to_replace} not found in surface or pressure level lists')
+                replacement_das.append(tmp_da)
+                
+            era5_target_da = xr.concat(replacement_das, dim='time')
+            era5_target_da = convert_to_relative_time(era5_target_da, zero_time=t0)[args.var_to_replace]
+            
+            if args.cache_inputs:
+                with open('cached_replacement_vars.nc', 'wb+') as ofh:
+                    pickle.dump({'era5_target_da': era5_target_da}, ofh)
+        else:
+            with open('cached_replacement_vars.nc', 'rb') as ifh:
+                data_dict = pickle.load(ifh)
+                
+            era5_target_da = data_dict['era5_target_da']
     else:
         print('Skipping variable replacement since none specified', flush=True)
     
@@ -333,9 +363,10 @@ if __name__ == '__main__':
     ############################
 
     sorted_input_coords_and_vars = sorted(inputs.coords) + sorted(inputs.data_vars)
+    sorted_forcing_coords_and_vars = sorted(forcings.coords) + sorted(forcings.data_vars)
     inputs = xr.Dataset(inputs)[sorted_input_coords_and_vars]
     targets_template = xr.Dataset(targets_template)[sorted(inputs.coords) + sorted(targets_template.data_vars)]
-    forcings = xr.Dataset(forcings)
+    forcings = xr.Dataset(forcings)[sorted_forcing_coords_and_vars]
 
     if "datetime" in inputs.coords:
         del inputs.coords["datetime"]
@@ -376,12 +407,14 @@ if __name__ == '__main__':
             current_forcings = forcings
         else:
             current_forcings = future_forcings.isel(time=slice(chunk_index-1, chunk_index))
+            
             data_utils.add_derived_vars(current_forcings)
             current_forcings = current_forcings[list(task_config_dict['forcing_variables'])].drop_vars("datetime")
+            current_forcings = current_forcings
 
         actual_target_relative_time = current_forcings.coords["time"]  
         current_forcings = current_forcings.assign_coords(time=targets_chunk_time)
-        current_forcings = current_forcings.compute()
+        current_forcings = current_forcings.compute()[sorted_forcing_coords_and_vars]
         
         if args.var_to_replace is not None and chunk_index > 0:
             ## Replace vars if appropriate
@@ -398,7 +431,7 @@ if __name__ == '__main__':
             for t_ix, t in enumerate(actual_input_times):
                 if t > 0:
 
-                    new_val = era5_target_da.sel(time=t)
+                    new_val = era5_target_da.sel(time=t).drop_vars('datetime')
                     new_val['time'] = input_times[t_ix]
                     new_vals.append(new_val)
                     
