@@ -83,7 +83,7 @@ def load_era5(var: str,
             day: int,
             hour: int,
             era_data_dir: str,
-            pressure_levels: list=None,
+            pressure_levels: list=None
             ):
     """Load ERA5 data, particularly focused towards data that the Graphcast model expects (6 hourly)
 
@@ -104,17 +104,18 @@ def load_era5(var: str,
         _type_: _description_
     """
     
+
     if pressure_levels is None:
         if var not in ERA5_SURFACE_VARS + ERA5_STATIC_VARS:
             raise ValueError(f'Variable {var} not found in possible surface variable names')
-        data_type = 'surface'
+        data_category = 'surface'
     else:
         if var not in ERA5_PLEVEL_VARS:
             raise ValueError(f'Variable {var} not found in possible atmospheric variable names')
-        data_type = 'plevels'
+        data_category = 'plevels'
         
-        if isinstance(pressure_levels , tuple):
-            pressure_levels = list(pressure_levels)
+    if isinstance(pressure_levels , tuple):
+        pressure_levels = list(pressure_levels)
 
     if var != 'total_precipitation_6hr':
         time_sel = [datetime.datetime(year,month, day, hour)]
@@ -129,7 +130,7 @@ def load_era5(var: str,
     das = []
     
     for fp in fps:
-        da = xr.load_dataarray(os.path.join(era_data_dir, data_type, fp))
+        da = xr.load_dataarray(os.path.join(era_data_dir, data_category, fp))
         da = format_dataarray(da)
     
         das.append(da)
@@ -242,8 +243,10 @@ def load_era5_plevel(year: int,
 
         das = []
         for dt in time_sel:
-            da = load_era5(var, dt.year, dt.month, dt.day, dt.hour, era_data_dir=era5_data_dir,
-                        pressure_levels=pressure_levels)
+            da = load_era5(var, dt.year, dt.month, dt.day, 
+                           dt.hour, era_data_dir=era5_data_dir,
+                           pressure_levels=pressure_levels
+                           )
             das.append(da)
             
         tmp_da = xr.concat(das, dim='time')
