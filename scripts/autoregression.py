@@ -48,7 +48,7 @@ from automl import data
 DATASET_FOLDER = '/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5'
 GRAPHCAST_DIR = '/home/a/antonio/repos/graphcast-ox'
 OUTPUT_VARS = [
-    '2m_temperature', 'total_precipitation_6hr', '10m_v_component_of_wind', '10m_u_component_of_wind', 'specific_humidity'
+    '2m_temperature', 'total_precipitation_6hr', '10m_v_component_of_wind', '10m_u_component_of_wind', 'specific_humidity', 'temperature'
 ]
 NONEGATIVE_VARS = [
     "2m_temperature",
@@ -228,7 +228,7 @@ if __name__ == '__main__':
                         help='Load from ERA5') 
     parser.add_argument('--var-to-replace', type=str, default=None,
                         help="Variable to replace with ERA5 input during autoregression",
-                        choices=gc.TARGET_SURFACE_VARS # For now limit to the surface vars
+                        choices=list(gc.TARGET_SURFACE_VARS) + ['specific_humidity', 'temperature'] # For now limit to the surface vars
                         )
     parser.add_argument('--cache-inputs', action='store_true',
                         help='If active, then inputs will be cached to allow fast iteration')
@@ -236,6 +236,7 @@ if __name__ == '__main__':
     year = args.year
     month = args.month
     day = args.day
+
     
     if day == -1:
         day = monthrange(year=year, month=month)[-1]
@@ -248,6 +249,8 @@ if __name__ == '__main__':
             hour_start = np.random.choice([0,6,12,18])
     else:
         hour_start = int(args.hour_start)
+    
+    print(f'Running for {year}-{month:02d}-{day:02d} {hour_start}')
     
     logger.info(f'Platform: {xla_bridge.get_backend().platform}')
     
@@ -327,8 +330,10 @@ if __name__ == '__main__':
                     tmp_da = data.load_era5_surface(dt.year, dt.month, dt.day, dt.hour, era5_data_dir=DATASET_FOLDER, 
                                                     vars=[args.var_to_replace], gather_input_datetimes=False)
                 elif args.var_to_replace in data.ERA5_PLEVEL_VARS:
-                    tmp_da = data.load_era5_plevel(dt.year, dt.month, dt.day, dt.hour, era5_data_dir=DATASET_FOLDER, 
-                                                vars=[args.var_to_replace], gather_input_datetimes=False)
+                    tmp_da = data.load_era5_plevel(dt.year, dt.month, dt.day, 
+                                                   dt.hour, era5_data_dir=DATASET_FOLDER,
+                                                   pressure_levels=[1000],
+                                                   vars=[args.var_to_replace], gather_input_datetimes=False)
                 else:
                     raise ValueError(f'Variable {args.var_to_replace} not found in surface or pressure level lists')
                 replacement_das.append(tmp_da)
@@ -475,7 +480,7 @@ if __name__ == '__main__':
         fp = os.path.join(save_dir, 
                           f'pred_{year}{month:02d}{day:02d}_n{chunk_index}.nc')
 
-        prediction[OUTPUT_VARS].isel(level=len(gc.PRESSURE_LEVELS_ERA5_37)-1).to_netcdf(fp)
+        prediction[OUTPUT_VARS].sel(level=[1000,850]).to_netcdf(fp)
         del prediction
         
     logger.info('Complete')
