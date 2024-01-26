@@ -171,47 +171,49 @@ if __name__ == '__main__':
                                     pressure_level=pressure_level,
                                     output_prefix=os.path.join(var_dir, f'era5_{var}_{year}{padded_month}'))
                         
-        
-    if args.surface:
-        subfolder_name = 'surface'
-        var_dir = os.path.join(args.output_dir, 'surface', var, str(year))
-        vars = SURFACE_VARS
-        pressure_level=None
+    else: 
+        if args.surface:
+            subfolder_name = 'surface'
+            vars = SURFACE_VARS
+            pressure_level=None
 
-    elif args.plevels and args.vars is None: 
-        subfolder_name = 'plevels'
-        vars = PRESSURE_LEVEL_VARS
-        pressure_level=PRESSURE_LEVELS_ERA5_37
-        
-    for var in vars:
-        print(f'**Fetching var={var}', flush=True)
-        
-        
-        for year in args.years:
+        elif args.plevels: 
+            subfolder_name = 'plevels'
+            vars = PRESSURE_LEVEL_VARS
+
+            pressure_level=PRESSURE_LEVELS_ERA5_37
+        else:
+            raise ValueError('Input arguments invalid') 
             
-            print(f'** Fetching year={year}', flush=True)
+        for var in vars:
+            print(f'**Fetching var={var}', flush=True)
             
-            var_dir = os.path.join(args.output_dir,  subfolder_name, var, str(year))
-            os.makedirs(var_dir, exist_ok=True)
+            
+            for year in args.years:
+                
+                print(f'** Fetching year={year}', flush=True)
+                
+                var_dir = os.path.join(args.output_dir,  subfolder_name, var, str(year))
+                os.makedirs(var_dir, exist_ok=True)
+                        
+                for month in args.months:
                     
-            for month in args.months:
+                    print(f'** Fetching month={month}', flush=True)
+                    
+                    padded_month =f'{int(month):02d}'
+                    days = format_days(year, month, args.days)
+                    
+                    output_prefix=os.path.join(var_dir, f'era5_{var}_{year}{padded_month}')
+                    
+                    # Don't overwrite existing data 
+                    days = [d for d in days if not os.path.exists(output_prefix + f'{d}.nc')]
+                    
+                    if len(days)> 0:
                 
-                print(f'** Fetching month={month}', flush=True)
-                
-                padded_month =f'{int(month):02d}'
-                days = format_days(year, month, args.days)
-                
-                output_prefix=os.path.join(var_dir, f'era5_{var}_{year}{padded_month}')
-                
-                # Don't overwrite existing data 
-                days = [d for d in days if not os.path.exists(output_prefix + f'{d}.nc')]
-                
-                if len(days)> 0:
-            
-                    retrieve_data(year=year,
-                                months=[padded_month],
-                                days=days,
-                                var=var,
-                                pressure_level=pressure_level,
-                                output_prefix=os.path.join(var_dir, f'era5_{var}_{year}{padded_month}'))
-    
+                        retrieve_data(year=year,
+                                    months=[padded_month],
+                                    days=days,
+                                    var=var,
+                                    pressure_level=pressure_level,
+                                    output_prefix=os.path.join(var_dir, f'era5_{var}_{year}{padded_month}'))
+        

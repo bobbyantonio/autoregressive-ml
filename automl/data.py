@@ -8,7 +8,7 @@ import pandas as pd
 from graphcast import graphcast as gc
 
 HOME = Path(__file__).parents[1]
-DATASET_FOLDER = '~/nobackups/era5'
+DATASET_FOLDER = '/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5'
 
 ERA5_SURFACE_VARS = list(gc.TARGET_SURFACE_VARS) + list(gc.EXTERNAL_FORCING_VARS)
 ERA5_PLEVEL_VARS = list(gc.TARGET_ATMOSPHERIC_VARS)
@@ -77,7 +77,35 @@ def ns_to_hr(ns_val: float):
     
     return ns_val* 1e-9 / (60*60)
 
+
 def load_era5(var: str,
+            era_data_dir: str,
+            datetimes: list,
+            pressure_levels: list=None
+            ):
+    """
+    """
+    
+    if isinstance(pressure_levels , tuple):
+        pressure_levels = list(pressure_levels)
+    
+    era5_var_name = ERA5_VARNAME_LOOKUP.get(var, var)
+        
+    fps = sorted(set([os.path.join(era_data_dir, f"{era5_var_name}/{item.strftime('%Y')}/era5_{era5_var_name}_{item.strftime('%Y%m%d')}.nc") for item in datetimes]))
+    
+    da = xr.open_mfdataset(fps)
+    da = da.sel(time=datetimes)[list(da.data_vars)[0]]
+        
+    if pressure_levels is not None:
+        da = da.sel(level=pressure_levels)
+        
+    da = format_dataarray(da)
+    da.name = var
+        
+    return da
+
+
+def load_era5_graphcast(var: str,
             year: int,
             month: int,
             day: int,
@@ -85,7 +113,7 @@ def load_era5(var: str,
             era_data_dir: str,
             pressure_levels: list=None
             ):
-    """Load ERA5 data, particularly focused towards data that the Graphcast model expects (6 hourly)
+    """Load ERA5 data, focused towards data that the Graphcast model expects (6 hourly)
 
     Args:
         var (str): variable name
@@ -116,44 +144,32 @@ def load_era5(var: str,
         
     if isinstance(pressure_levels , tuple):
         pressure_levels = list(pressure_levels)
-
+ 
     if var != 'total_precipitation_6hr':
         time_sel = [datetime.datetime(year,month, day, hour)]
-        era5_var_name = var
     else:
         time_sel = pd.date_range(start=datetime.datetime(year,month,day,hour) - datetime.timedelta(hours=5), periods=6, freq='1h')
-    
-    era5_var_name = ERA5_VARNAME_LOOKUP.get(var, var)
-        
-    fps = set([f"{era5_var_name}/{item.strftime('%Y')}/era5_{era5_var_name}_{item.strftime('%Y%m%d')}.nc" for item in time_sel])
-    
-    das = []
-    
-    for fp in fps:
-        da = xr.load_dataarray(os.path.join(era_data_dir, data_category, fp))
-        da = format_dataarray(da)
-    
-        das.append(da)
-    da = xr.concat(das, dim='time')
-    da = da.sel(time=time_sel)
+
+    ds = load_era5(var=var,
+            era_data_dir=os.path.join(era_data_dir, data_category),
+            pressure_levels=pressure_levels,
+            datetimes=time_sel
+            )
       
     if var == 'total_precipitation_6hr':
                 
         # Have to do some funny stuff with offsets to ensure the right hours are being aggregated,
         # and labelled in the right way
-        da = da.resample(time='6h', 
+        ds = ds.resample(time='6h', 
                             label='right', 
                             offset=datetime.timedelta(hours=1), # Offset of grouping
                             ).sum()
         offset = pd.tseries.frequencies.to_offset("1h")
-        da['time'] = da.get_index("time") - offset
-        
-    if pressure_levels is not None:
-        da = da.sel(level=pressure_levels)
+        ds['time'] = ds.get_index("time") - offset
     
-    da.name = var
+    ds.name = var
     
-    return da
+    return ds
 
 def load_era5_static(year: int, month: int, day: int, hour: int=1, era5_data_dir: str=DATASET_FOLDER):
     
@@ -161,7 +177,7 @@ def load_era5_static(year: int, month: int, day: int, hour: int=1, era5_data_dir
 
     for var in tqdm(gc.STATIC_VARS):
 
-        da = load_era5(var=var,
+        da = load_era5_graphcast(var=var,
                        year=year,
                        month=month, 
                        day=day,
@@ -197,7 +213,7 @@ def load_era5_surface(year: int,
 
         das = []
         for dt in time_sel:
-            da = load_era5(var, dt.year, dt.month, dt.day, dt.hour, era_data_dir=era5_data_dir)
+            da = load_era5_graphcast(var, dt.year, dt.month, dt.day, dt.hour, era_data_dir=era5_data_dir)
             das.append(da)
             
         tmp_da = xr.concat(das, dim='time')
@@ -243,7 +259,7 @@ def load_era5_plevel(year: int,
 
         das = []
         for dt in time_sel:
-            da = load_era5(var, dt.year, dt.month, dt.day, 
+            da = load_era5_graphcast(var, dt.year, dt.month, dt.day, 
                            dt.hour, era_data_dir=era5_data_dir,
                            pressure_levels=pressure_levels
                            )
