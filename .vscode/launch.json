@@ -10,8 +10,8 @@
             "request": "launch",
             "module": "automl.fetch_era5",
             "justMyCode": true,
-            "args": ["--year", "2018", "--output-dir", "/home/a/antonio/repos/autoregressive-ml/dataset", 
-            "--vars", "toa_incident_solar_radiation", "--days", "1", "2", "--months", "1", "2"]
+            "args": ["--year", "2016", "--output-dir", "/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5", 
+            "--vars", "specific_humidity", "--pressure-level", "1000", "850", "--month", "7"]
         },
         {
             "name": "fetch_era5_surf",
@@ -20,7 +20,7 @@
             "module": "automl.fetch_era5",
             "justMyCode": true,
             "args": ["--year", "2016", "--output-dir", "/home/a/antonio/nobackups/era5", 
-            "--surface", "--days", "1", "2", "--months", "1", "2"]
+            "--surface", "--days", "1", "--months", "1", "2"]
         },
         {
             "name": "autoregression",
@@ -29,7 +29,7 @@
             "module": "scripts.autoregression",
             "justMyCode": true,
             "args": ["--output-dir", "/home/a/antonio/repos/graphcast-ox/dataset/predictions", "--num-steps", 
-            "5", "--year", "2016", "--month", "1", "--day", "1", "--hour", "18", "--var-to-replace", "2m_temperature", "--cache-inputs"]
+            "5", "--year", "2016", "--month", "1", "--day", "1", "--hour", "18", "--var-to-replace", "specific_humidity"]
         }
     ]
 }

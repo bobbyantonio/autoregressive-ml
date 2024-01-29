@@ -1,10 +1,12 @@
 import os, sys
 import datetime
+import dask
 import xarray as xr
 from tqdm import tqdm
 from pathlib import Path
 import numpy as np
 import pandas as pd
+from functools import partial
 from graphcast import graphcast as gc
 
 HOME = Path(__file__).parents[1]
@@ -78,38 +80,12 @@ def ns_to_hr(ns_val: float):
     return ns_val* 1e-9 / (60*60)
 
 
+def _preprocess_sel_levels(x: xr.Dataset, levels: list):
+    return x.sel(level=levels)
+
+
 def load_era5(var: str,
-            era_data_dir: str,
             datetimes: list,
-            pressure_levels: list=None
-            ):
-    """
-    """
-    
-    if isinstance(pressure_levels , tuple):
-        pressure_levels = list(pressure_levels)
-    
-    era5_var_name = ERA5_VARNAME_LOOKUP.get(var, var)
-        
-    fps = sorted(set([os.path.join(era_data_dir, f"{era5_var_name}/{item.strftime('%Y')}/era5_{era5_var_name}_{item.strftime('%Y%m%d')}.nc") for item in datetimes]))
-    
-    da = xr.open_mfdataset(fps)
-    da = da.sel(time=datetimes)[list(da.data_vars)[0]]
-        
-    if pressure_levels is not None:
-        da = da.sel(level=pressure_levels)
-        
-    da = format_dataarray(da)
-    da.name = var
-        
-    return da
-
-
-def load_era5_graphcast(var: str,
-            year: int,
-            month: int,
-            day: int,
-            hour: int,
             era_data_dir: str,
             pressure_levels: list=None
             ):
@@ -122,7 +98,7 @@ def load_era5_graphcast(var: str,
         day (int): day
         hour (int): hour
         era_data_dir (str): folder containing era5 data
-        pressure_levels (_type_, optional): _description_. Defaults to None.
+        pressure_levels (list, optional): List of pressure levels to fetch, if relevant. Defaults to None.
 
     Raises:
         ValueError: _description_
@@ -134,10 +110,16 @@ def load_era5_graphcast(var: str,
     
 
     if pressure_levels is None:
+        preprocess_func = None
         if var not in ERA5_SURFACE_VARS + ERA5_STATIC_VARS:
             raise ValueError(f'Variable {var} not found in possible surface variable names')
         data_category = 'surface'
     else:
+        preprocess_func = None
+        if isinstance(pressure_levels , tuple):
+            pressure_levels = list(pressure_levels)
+        preprocess_func = partial(_preprocess_sel_levels, levels=pressure_levels)
+        
         if var not in ERA5_PLEVEL_VARS:
             raise ValueError(f'Variable {var} not found in possible atmospheric variable names')
         data_category = 'plevels'
@@ -145,31 +127,43 @@ def load_era5_graphcast(var: str,
     if isinstance(pressure_levels , tuple):
         pressure_levels = list(pressure_levels)
  
-    if var != 'total_precipitation_6hr':
-        time_sel = [datetime.datetime(year,month, day, hour)]
-    else:
-        time_sel = pd.date_range(start=datetime.datetime(year,month,day,hour) - datetime.timedelta(hours=5), periods=6, freq='1h')
-
-    ds = load_era5(var=var,
-            era_data_dir=os.path.join(era_data_dir, data_category),
-            pressure_levels=pressure_levels,
-            datetimes=time_sel
-            )
+    if var == 'total_precipitation_6hr':
+        extra_datetimes = []
+        for dt in datetimes:
+            extra_datetimes += [dt - datetime.timedelta(hours=n) for n in range(1,6)]
+            
+        if len(set(datetimes).intersection(set(extra_datetimes))) > 0:
+            raise ValueError('Datetimes must be at least 6hr apart, as the current code cannot currently resample precipitation otherwise.')
+        
+        datetimes = sorted(set(list(datetimes) + extra_datetimes))
+    
+    era5_var_name = ERA5_VARNAME_LOOKUP.get(var, var)
+        
+    fps = sorted(set([os.path.join(era_data_dir, data_category, era5_var_name, f"{item.strftime('%Y')}/era5_{era5_var_name}_{item.strftime('%Y%m%d')}.nc") for item in datetimes]))
+    
+    # Need to preprocess to select levels, otherwise this function has trouble combining them
+    with dask.config.set(**{'array.slicing.split_large_chunks': True}):
+        da = xr.open_mfdataset(fps, preprocess=preprocess_func)
+        da = da.sel(time=datetimes)[list(da.data_vars)[0]]
+        
+    if pressure_levels is not None:
+        da = da.sel(level=pressure_levels)
+        
+    da = format_dataarray(da)
+    da.name = var
       
     if var == 'total_precipitation_6hr':
                 
         # Have to do some funny stuff with offsets to ensure the right hours are being aggregated,
         # and labelled in the right way
-        ds = ds.resample(time='6h', 
+        da = da.resample(time='6h', 
                             label='right', 
                             offset=datetime.timedelta(hours=1), # Offset of grouping
                             ).sum()
         offset = pd.tseries.frequencies.to_offset("1h")
-        ds['time'] = ds.get_index("time") - offset
+        da['time'] = da.get_index("time") - offset
     
-    ds.name = var
-    
-    return ds
+    return da
 
 def load_era5_static(year: int, month: int, day: int, hour: int=1, era5_data_dir: str=DATASET_FOLDER):
     
@@ -177,12 +171,9 @@ def load_era5_static(year: int, month: int, day: int, hour: int=1, era5_data_dir
 
     for var in tqdm(gc.STATIC_VARS):
 
-        da = load_era5_graphcast(var=var,
-                       year=year,
-                       month=month, 
-                       day=day,
-                       hour=hour, 
-                       era_data_dir=era5_data_dir)
+        da = load_era5(var=var,
+                       datetimes=[datetime.datetime(year=year, month=month, day=day, hour=hour)],
+                       era_data_dir=era5_data_dir).load()
         static_das.append(da)
 
     static_ds = xr.merge(static_das)
@@ -211,12 +202,8 @@ def load_era5_surface(year: int,
     
     for var in tqdm(vars):
 
-        das = []
-        for dt in time_sel:
-            da = load_era5_graphcast(var, dt.year, dt.month, dt.day, dt.hour, era_data_dir=era5_data_dir)
-            das.append(da)
-            
-        tmp_da = xr.concat(das, dim='time')
+        tmp_da = load_era5(var, time_sel, era_data_dir=era5_data_dir).load()
+
         tmp_da = tmp_da.expand_dims({'batch': 1})
 
         surf_das[var] = tmp_da
@@ -256,16 +243,11 @@ def load_era5_plevel(year: int,
         time_sel = time_sel[-1:]
 
     for var in tqdm(vars):
-
-        das = []
-        for dt in time_sel:
-            da = load_era5_graphcast(var, dt.year, dt.month, dt.day, 
-                           dt.hour, era_data_dir=era5_data_dir,
-                           pressure_levels=pressure_levels
-                           )
-            das.append(da)
-            
-        tmp_da = xr.concat(das, dim='time')
+        
+        tmp_da = load_era5(var, time_sel, era_data_dir=era5_data_dir,
+                        pressure_levels=pressure_levels
+                        ).load()
+                    
         tmp_da = tmp_da.expand_dims({'batch': 1})
 
         plevel_das[var] = tmp_da

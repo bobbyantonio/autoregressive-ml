@@ -289,11 +289,11 @@ if __name__ == '__main__':
         for dt in dts_to_fill:
             y, m, d, h = unpack_np_datetime(dt)
             tmp_da = data.load_era5(var='toa_incident_solar_radiation',
-                                                year=y,
-                                                month=m,
-                                                day=d,
-                                                hour=h,
-                                                era_data_dir=DATASET_FOLDER)
+                                                datetimes=[datetime.datetime(year=y,
+                                                                            month=m,
+                                                                            day=d,
+                                                                            hour=h)],
+                                                era_data_dir=DATASET_FOLDER).load()
             tmp_da = tmp_da.expand_dims({'batch': 1})
             solar_rad_das.append(tmp_da)
 
