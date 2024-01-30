@@ -402,6 +402,7 @@ if __name__ == '__main__':
     input_times = inputs.time.values
 
     current_inputs = inputs
+    current_inputs.attrs = {}
     # Target template is fixed
     current_targets_template = targets_template.isel(time=slice(0,1))
 
@@ -410,6 +411,7 @@ if __name__ == '__main__':
         
         if chunk_index == 0:
             current_forcings = forcings
+
         else:
             current_forcings = future_forcings.isel(time=slice(chunk_index-1, chunk_index))
             
@@ -420,6 +422,9 @@ if __name__ == '__main__':
         actual_target_relative_time = current_forcings.coords["time"]  
         current_forcings = current_forcings.assign_coords(time=targets_chunk_time)
         current_forcings = current_forcings.compute()[sorted_forcing_coords_and_vars]
+        
+        if chunk_index == 0:
+            tmp_forcings = current_forcings.copy()
         
         if args.var_to_replace is not None and chunk_index > 0:
             ## Replace vars if appropriate
@@ -435,9 +440,21 @@ if __name__ == '__main__':
             new_vals = []
             for t_ix, t in enumerate(actual_input_times):
                 if t > 0:
-
-                    new_val = era5_target_da.sel(time=t).drop_vars('datetime')
-                    new_val['time'] = input_times[t_ix]
+                    if args.var_to_replace in gc.ALL_ATMOSPHERIC_VARS:
+                        # Only replace pressure levels that are provided
+                        level_vals = era5_target_da.sel(time=t).level.values
+                        remaining_level_vals = sorted(set(gc.PRESSURE_LEVELS_ERA5_37).difference(set(level_vals)))
+                        
+                        da1 = current_inputs[args.var_to_replace].sel(time=input_times[t_ix]).sel(level=remaining_level_vals)
+                        da1['time'] = input_times[t_ix]
+                        da2 = era5_target_da.sel(time=t).drop_vars('datetime')
+                        da2['time'] = input_times[t_ix]
+                        
+                        new_val = xr.concat([da1, da2], dim='level')
+                    else:
+                        new_val = era5_target_da.sel(time=t).drop_vars('datetime')
+                        new_val['time'] = input_times[t_ix]
+                        
                     new_vals.append(new_val)
                     
                 else:
@@ -449,6 +466,10 @@ if __name__ == '__main__':
             new_inputs = new_inputs[list(current_inputs.data_vars)]
             new_inputs = new_inputs[sorted_input_coords_and_vars]
             current_inputs = new_inputs
+            current_inputs.attrs = {}
+        
+        if chunk_index == 0:
+            tmp_finputs = current_inputs.copy()
             
         # Make sure nonnegative vars are non negative
         for nn_var in NONEGATIVE_VARS:
