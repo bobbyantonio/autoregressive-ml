@@ -232,6 +232,8 @@ if __name__ == '__main__':
                         )
     parser.add_argument('--cache-inputs', action='store_true',
                         help='If active, then inputs will be cached to allow fast iteration')
+    parser.add_argument('--replace-uses-lsm', action='store_true',
+                    help='If active, then variable replacement only occurs over sea/ocean points')
     args = parser.parse_args()
     year = args.year
     month = args.month
@@ -356,7 +358,7 @@ if __name__ == '__main__':
 
     task_config_dict = dataclasses.asdict(task_config)
 
-    inputs, targets, forcings = data_utils.extract_inputs_targets_forcings(
+    current_inputs, targets, current_forcings = data_utils.extract_inputs_targets_forcings(
                 prepared_ds, target_lead_times=slice("6h", "6h"),
                 **task_config_dict)
     
@@ -367,14 +369,14 @@ if __name__ == '__main__':
     num_steps_per_chunk = 1
     ############################
 
-    sorted_input_coords_and_vars = sorted(inputs.coords) + sorted(inputs.data_vars)
-    sorted_forcing_coords_and_vars = sorted(forcings.coords) + sorted(forcings.data_vars)
-    inputs = xr.Dataset(inputs)[sorted_input_coords_and_vars]
-    targets_template = xr.Dataset(targets_template)[sorted(inputs.coords) + sorted(targets_template.data_vars)]
-    forcings = xr.Dataset(forcings)[sorted_forcing_coords_and_vars]
+    sorted_input_coords_and_vars = sorted(current_inputs.coords) + sorted(current_inputs.data_vars)
+    sorted_forcing_coords_and_vars = sorted(current_forcings.coords) + sorted(current_forcings.data_vars)
+    current_inputs = xr.Dataset(current_inputs)[sorted_input_coords_and_vars]
+    targets_template = xr.Dataset(targets_template)[sorted(current_inputs.coords) + sorted(targets_template.data_vars)]
+    current_forcings = xr.Dataset(current_forcings)[sorted_forcing_coords_and_vars]
 
-    if "datetime" in inputs.coords:
-        del inputs.coords["datetime"]
+    if "datetime" in current_inputs.coords:
+        del current_inputs.coords["datetime"]
 
     if "datetime" in targets_template.coords:
         output_datetime = targets_template.coords["datetime"]
@@ -382,8 +384,8 @@ if __name__ == '__main__':
     else:
         output_datetime = None
 
-    if "datetime" in forcings.coords:
-        del forcings.coords["datetime"]
+    if "datetime" in current_forcings.coords:
+        del current_forcings.coords["datetime"]
 
     num_target_steps = targets_template.dims["time"]
     num_chunks, remainder = divmod(num_target_steps, num_steps_per_chunk)
@@ -399,9 +401,8 @@ if __name__ == '__main__':
     # timedeltas for the first chunk.
     targets_chunk_time = targets_template.time.isel(
         time=slice(0, num_steps_per_chunk))
-    input_times = inputs.time.values
+    input_times = current_inputs.time.values
 
-    current_inputs = inputs
     current_inputs.attrs = {}
     # Target template is fixed
     current_targets_template = targets_template.isel(time=slice(0,1))
@@ -409,10 +410,7 @@ if __name__ == '__main__':
     predictions = []
     for chunk_index in tqdm(range(args.num_steps)):
         
-        if chunk_index == 0:
-            current_forcings = forcings
-
-        else:
+        if chunk_index > 0:
             current_forcings = future_forcings.isel(time=slice(chunk_index-1, chunk_index))
             
             data_utils.add_derived_vars(current_forcings)
@@ -422,9 +420,6 @@ if __name__ == '__main__':
         actual_target_relative_time = current_forcings.coords["time"]  
         current_forcings = current_forcings.assign_coords(time=targets_chunk_time)
         current_forcings = current_forcings.compute()[sorted_forcing_coords_and_vars]
-        
-        if chunk_index == 0:
-            tmp_forcings = current_forcings.copy()
         
         if args.var_to_replace is not None and chunk_index > 0:
             ## Replace vars if appropriate
@@ -455,6 +450,12 @@ if __name__ == '__main__':
                         new_val = era5_target_da.sel(time=t).drop_vars('datetime')
                         new_val['time'] = input_times[t_ix]
                         
+                        # Using land sea mask only currently supported with surface variables
+                        if args.replace_uses_lsm:
+
+                            land_points = np.expand_dims(static_ds['land_sea_mask'].values >= 0.5, axis=0)
+                            new_val.values[land_points] = current_inputs[args.var_to_replace].sel(time=input_times[t_ix]).values[land_points]
+                        
                     new_vals.append(new_val)
                     
                 else:
@@ -467,9 +468,7 @@ if __name__ == '__main__':
             new_inputs = new_inputs[sorted_input_coords_and_vars]
             current_inputs = new_inputs
             current_inputs.attrs = {}
-        
-        if chunk_index == 0:
-            tmp_finputs = current_inputs.copy()
+    
             
         # Make sure nonnegative vars are non negative
         for nn_var in NONEGATIVE_VARS:

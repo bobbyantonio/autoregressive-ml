@@ -12,7 +12,7 @@ from graphcast import graphcast as gc
 HOME = Path(__file__).parents[1]
 DATASET_FOLDER = '/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5'
 
-ERA5_SURFACE_VARS = list(gc.TARGET_SURFACE_VARS) + list(gc.EXTERNAL_FORCING_VARS)
+ERA5_SURFACE_VARS = list(gc.TARGET_SURFACE_VARS) + list(gc.EXTERNAL_FORCING_VARS) 
 ERA5_PLEVEL_VARS = list(gc.TARGET_ATMOSPHERIC_VARS)
 ERA5_STATIC_VARS = list(gc.STATIC_VARS)
 

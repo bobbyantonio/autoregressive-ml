@@ -29,7 +29,7 @@
             "module": "automl.autoregression",
             "justMyCode": true,
             "args": ["--output-dir", "/home/a/antonio/repos/graphcast-ox/dataset/predictions", "--num-steps", 
-            "5", "--year", "2016", "--month", "1", "--day", "1", "--hour", "18", "--var-to-replace", "specific_humidity"]
+            "5", "--year", "2016", "--month", "1", "--day", "1", "--hour", "18", "--var-to-replace", "2m_temperature", "--replace-uses-lsm"]
         }
     ]
 }
