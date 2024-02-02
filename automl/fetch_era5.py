@@ -1,10 +1,12 @@
 # Note that this requires setup of an API key and installing cdsapi:
 # Go to: https://cds.climate.copernicus.eu/api-how-to
-import os, sys
+import os
 import subprocess
 import cdsapi
-from tqdm import tqdm
-from glob import glob
+import xarray as xr
+os.environ['ESMFMKFILE'] = '/home/a/antonio/nobackups/miniforge3/envs/graphcast/lib/esmf.mk'
+import xesmf as xe
+import numpy as np
 import tempfile
 from calendar import monthrange
 from typing import Iterable
@@ -20,7 +22,7 @@ PRESSURE_LEVELS_ERA5_37 = (
 SURFACE_VARS =  (
                 '10m_u_component_of_wind', '10m_v_component_of_wind', '2m_temperature',
                 'geopotential', 'land_sea_mask', 'mean_sea_level_pressure',
-                'toa_incident_solar_radiation', 'total_precipitation',
+                'toa_incident_solar_radiation', 'total_precipitation', 'sea_surface_temperature'
 )
 
 PRESSURE_LEVEL_VARS = (
@@ -58,13 +60,52 @@ def format_days(year: str, month:str, days:str):
             output_days.append(f'{int(day):02d}')
         
     return output_days
+
+def interpolate_dataset_on_lat_lon(ds: xr.Dataset, 
+                                   latitude_vals: list, 
+                                   longitude_vals: list,
+                                   interp_method:str ='bilinear'):
+    """
+    Interpolate dataset to new lat/lon values
+
+    Args:
+        ds (xr.Dataset): Datast to interpolate
+        latitude_vals (list): list of latitude values to interpolate to
+        longitude_vals (list): list of longitude values to interpolate to
+        interp_method (str, optional): name of interpolation method. Defaults to 'bilinear'._
+
+    Returns:
+        xr,Dataset: interpolated dataset
+    """
+        
+    ds_out = xr.Dataset(
+        {
+            'lat': (['lat'], latitude_vals),
+            'lon': (['lon'], longitude_vals),
+        }
+    )
+
+    # Use conservative to preserve global precipitation
+    regridder = xe.Regridder(ds, ds_out, interp_method)
+    regridded_ds = ds.copy()
     
+    # Make float vars C-contiguous (to avoid warning message and potentially improve performance)
+    for var in list(regridded_ds.data_vars):
+        if regridded_ds[var].values.dtype.kind == 'f':
+            regridded_ds[var].values = np.ascontiguousarray(regridded_ds[var].values)
+            
+    regridded_ds = regridder(regridded_ds)
+
+    return regridded_ds
+
+
 def retrieve_data(year:int, 
                     output_prefix:str,
                     var:str,
                     months:Iterable=range(1,13),
                     days:Iterable=range(1,32),
-                    pressure_level=None
+                    pressure_level=None,
+                    output_resolution: float=None
                     ):
     if var=='total_precipitation':
         # Collect full history for precip since it needs to be aggregated (the others are subsamples)
@@ -94,6 +135,14 @@ def retrieve_data(year:int,
         c.retrieve(
             'reanalysis-era5-single-levels' if pressure_level is None else 'reanalysis-era5-pressure-levels', 
             request, fp.name)
+        
+        if output_resolution is not None and output_resolution != 0.25:
+            ds = xr.load_dataset(fp.name)
+            interp_ds = interpolate_dataset_on_lat_lon(ds, 
+                                   latitude_vals=np.arange(-90, 90, output_resolution) , 
+                                   longitude_vals=np.arange(0,360,output_resolution),
+                                   interp_method ='conservative')
+            t=1
     
         ### 
         # Split into days to make it easier to look up values at daily level
@@ -122,7 +171,9 @@ if __name__ == '__main__':
     parser.add_argument('--months', nargs='+', default=range(1,13),
                         help='Months to collect data for')
     parser.add_argument('--days', nargs='+', default=range(1,32),
-                    help='Days to collect data for')  
+                    help='Days to collect data for') 
+    parser.add_argument('--resolution', type=float, default=None,
+                    help='Resolution to save to (will regrid if != 0.25)')  
     args = parser.parse_args()
     
     if args.vars:
@@ -169,6 +220,7 @@ if __name__ == '__main__':
                                     days=days,
                                     var=var,
                                     pressure_level=pressure_level,
+                                    output_resolution=args.resolution,
                                     output_prefix=os.path.join(var_dir, f'era5_{var}_{year}{padded_month}'))
                         
     else: 
@@ -206,14 +258,15 @@ if __name__ == '__main__':
                     output_prefix=os.path.join(var_dir, f'era5_{var}_{year}{padded_month}')
                     
                     # Don't overwrite existing data 
-                    days = [d for d in days if not os.path.exists(output_prefix + f'{d}.nc')]
+                    # days = [d for d in days if not os.path.exists(output_prefix + f'{d}.nc')]
                     
-                    if len(days)> 0:
+                    # if len(days)> 0:
                 
-                        retrieve_data(year=year,
-                                    months=[padded_month],
-                                    days=days,
-                                    var=var,
-                                    pressure_level=pressure_level,
-                                    output_prefix=os.path.join(var_dir, f'era5_{var}_{year}{padded_month}'))
+                    retrieve_data(year=year,
+                                months=[padded_month],
+                                days=days,
+                                var=var,
+                                pressure_level=pressure_level,
+                                output_resolution=args.resolution,
+                                output_prefix=os.path.join(var_dir, f'era5_{var}_{year}{padded_month}'))
         

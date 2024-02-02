@@ -234,6 +234,8 @@ if __name__ == '__main__':
                         help='If active, then inputs will be cached to allow fast iteration')
     parser.add_argument('--replace-uses-lsm', action='store_true',
                     help='If active, then variable replacement only occurs over sea/ocean points')
+    parser.add_argument('--interpolate-to-1000hPa', action='store_true',
+                help='If active, will interpolate temperature with 1000hPa value')
     args = parser.parse_args()
     year = args.year
     month = args.month
@@ -343,6 +345,20 @@ if __name__ == '__main__':
             era5_target_da = xr.concat(replacement_das, dim='time')
             era5_target_da = convert_to_relative_time(era5_target_da, zero_time=t0)[args.var_to_replace]
             
+            
+            if args.interpolate_to_1000hPa and args.var_to_replace == '2m_temperature':
+                # For experimenting with replacing t2m with interpolated field between SST and T1000hPa
+                replacement_das = []
+                for dt in target_datetimes:
+                    tmp_da = data.load_era5_plevel(dt.year, dt.month, dt.day, 
+                                                    dt.hour, era5_data_dir=DATASET_FOLDER,
+                                                    pressure_levels=[1000],
+                                                    vars=['temperature'], gather_input_datetimes=False)
+
+                    replacement_das.append(tmp_da)
+                era5_target_1000hPa_da = xr.concat(replacement_das, dim='time')
+                era5_target_1000hPa_da = convert_to_relative_time(era5_target_1000hPa_da, zero_time=t0)[args.var_to_replace]
+            
             if args.cache_inputs:
                 with open('cached_replacement_vars.nc', 'wb+') as ofh:
                     pickle.dump({'era5_target_da': era5_target_da}, ofh)
@@ -447,6 +463,7 @@ if __name__ == '__main__':
                         
                         new_val = xr.concat([da1, da2], dim='level')
                     else:
+                        
                         new_val = era5_target_da.sel(time=t).drop_vars('datetime')
                         new_val['time'] = input_times[t_ix]
                         
@@ -491,7 +508,9 @@ if __name__ == '__main__':
         prediction = prediction.assign_coords(time=actual_target_relative_time+t0)
         
         if args.var_to_replace is not None:
-            save_dir = os.path.join(args.output_dir, f'replace_{args.var_to_replace}')
+            
+            suffix= '_lsm' if args.replace_uses_lsm else ''
+            save_dir = os.path.join(args.output_dir, f'replace_{args.var_to_replace}{suffix}')
         
         else:
             save_dir = args.output_dir
