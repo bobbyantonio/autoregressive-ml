@@ -1,17 +1,21 @@
 # Note that this requires setup of an API key and installing cdsapi:
 # Go to: https://cds.climate.copernicus.eu/api-how-to
-import os
+import os, sys
 import subprocess
 import cdsapi
 import xarray as xr
-os.environ['ESMFMKFILE'] = '/home/a/antonio/nobackups/miniforge3/envs/graphcast/lib/esmf.mk'
-import xesmf as xe
+from pathlib import Path
 import numpy as np
 import tempfile
 from calendar import monthrange
 from typing import Iterable
 from argparse import ArgumentParser
 
+HOME = Path(__file__).parents[1]
+
+sys.path.append( str(HOME / 'automl'))
+
+from automl import data
 
 PRESSURE_LEVELS_ERA5_37 = (
     1, 2, 3, 5, 7, 10, 20, 30, 50, 70, 100, 125, 150, 175, 200, 225, 250, 300,
@@ -43,7 +47,7 @@ PRESSURE_LEVEL_VARS = (
                 'specific_cloud_ice_water_content',
                 'fraction_of_cloud_cover')
 
-c = cdsapi.Client()
+cds_api_client = cdsapi.Client()
 
 def format_days(year: str, month:str, days:str):
     final_month_day = monthrange(int(year), int(month))[1]
@@ -61,42 +65,6 @@ def format_days(year: str, month:str, days:str):
         
     return output_days
 
-def interpolate_dataset_on_lat_lon(ds: xr.Dataset, 
-                                   latitude_vals: list, 
-                                   longitude_vals: list,
-                                   interp_method:str ='bilinear'):
-    """
-    Interpolate dataset to new lat/lon values
-
-    Args:
-        ds (xr.Dataset): Datast to interpolate
-        latitude_vals (list): list of latitude values to interpolate to
-        longitude_vals (list): list of longitude values to interpolate to
-        interp_method (str, optional): name of interpolation method. Defaults to 'bilinear'._
-
-    Returns:
-        xr,Dataset: interpolated dataset
-    """
-        
-    ds_out = xr.Dataset(
-        {
-            'lat': (['lat'], latitude_vals),
-            'lon': (['lon'], longitude_vals),
-        }
-    )
-
-    # Use conservative to preserve global precipitation
-    regridder = xe.Regridder(ds, ds_out, interp_method)
-    regridded_ds = ds.copy()
-    
-    # Make float vars C-contiguous (to avoid warning message and potentially improve performance)
-    for var in list(regridded_ds.data_vars):
-        if regridded_ds[var].values.dtype.kind == 'f':
-            regridded_ds[var].values = np.ascontiguousarray(regridded_ds[var].values)
-            
-    regridded_ds = regridder(regridded_ds)
-
-    return regridded_ds
 
 
 def retrieve_data(year:int, 
@@ -132,17 +100,18 @@ def retrieve_data(year:int,
         request['pressure_level'] = [str(lvl) for lvl in pressure_level]
     with tempfile.NamedTemporaryFile() as fp:
         
-        c.retrieve(
+        cds_api_client.retrieve(
             'reanalysis-era5-single-levels' if pressure_level is None else 'reanalysis-era5-pressure-levels', 
             request, fp.name)
         
         if output_resolution is not None and output_resolution != 0.25:
             ds = xr.load_dataset(fp.name)
-            interp_ds = interpolate_dataset_on_lat_lon(ds, 
+            ds = data.interpolate_dataset_on_lat_lon(ds, 
                                    latitude_vals=np.arange(-90, 90, output_resolution) , 
                                    longitude_vals=np.arange(0,360,output_resolution),
                                    interp_method ='conservative')
-            t=1
+            ds.to_netcdf(fp.name + 'regridded')
+            output_prefix += f'_{output_resolution}deg'
     
         ### 
         # Split into days to make it easier to look up values at daily level

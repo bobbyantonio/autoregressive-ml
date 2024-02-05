@@ -7,13 +7,22 @@ import xarray as xr
 import pandas as pd
 from pathlib import Path
 
+from unittest.mock import patch
+from unittest import mock
+
 HOME = Path(__file__).parents[1]
 DATA_FOLDER = '/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5'
 
 sys.path.append(str(HOME))
 
+def mock_cds_api_client_retrieve(type, request, fp):
+    
+    ds = xr.load_dataset(os.path.join(DATA_FOLDER, 'surface/total_precipitation/2016/era5_total_precipitation_20160101.nc'))
+    
+    ds.to_netcdf(fp, compute=True)
+    return
 
-from automl import data
+from automl import data, fetch_era5
     
 class TestLoad(unittest.TestCase):
     
@@ -158,7 +167,20 @@ class TestLoad(unittest.TestCase):
 
         for v in ds.data_vars:
             self.assertFalse(np.any(np.isnan(ds[v].values)))
-            
+    
+    @patch.object(fetch_era5.cds_api_client, 'retrieve', mock_cds_api_client_retrieve) 
+    def test_fetch_era5(self):
+        
+        fetch_era5.retrieve_data(year=2016, 
+                    output_prefix='surface',
+                    var='2m_temperature',
+                    months=[1],
+                    days=[1],
+                    pressure_level=None,
+                    output_resolution=1.0
+                    )
+        
+        
 
 if __name__ == '__main__':
     unittest.main()

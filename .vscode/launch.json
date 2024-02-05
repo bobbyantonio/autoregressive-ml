@@ -6,7 +6,7 @@
     "configurations": [
         {
             "name": "fetch_era5",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "module": "automl.fetch_era5",
             "justMyCode": true,
@@ -15,21 +15,29 @@
         },
         {
             "name": "fetch_era5_surf",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "module": "automl.fetch_era5",
             "justMyCode": true,
             "args": ["--year", "2016", "--output-dir", "/home/a/antonio/nobackups/era5", 
-            "--surface", "--days", "1", "--months", "1", "2"]
+            "--surface", "--days", "1", "--months", "1", "2", "--resolution", "1"]
         },
         {
             "name": "autoregression",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "module": "automl.autoregression",
             "justMyCode": true,
             "args": ["--output-dir", "/home/a/antonio/repos/graphcast-ox/dataset/predictions", "--num-steps", 
-            "5", "--year", "2016", "--month", "1", "--day", "1", "--hour", "18", "--var-to-replace", "2m_temperature", "--replace-uses-lsm"]
+            "5", "--year", "2016", "--month", "1", "--day", "1", "--hour", "18", "--var-to-replace", "sea_surface_temperature", "--replace-uses-lsm"]
+        },
+        {
+            "name": "regrid",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "scripts.regrid_data",
+            "justMyCode": true,
+            "args": ["--years", "2016", "--output-dir", "/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5_1deg", "--days", "1", "--months", "1", "--resolution", "1"]
         }
     ]
 }

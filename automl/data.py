@@ -2,6 +2,9 @@ import os, sys
 import datetime
 import dask
 import xarray as xr
+os.environ['ESMFMKFILE'] = '/home/a/antonio/nobackups/miniforge3/envs/graphcast/lib/esmf.mk'
+
+import xesmf as xe
 from tqdm import tqdm
 from pathlib import Path
 import numpy as np
@@ -70,6 +73,44 @@ def infer_lat_lon_names(ds: xr.Dataset):
     assert (len(lat_var_name) == 1) and (len(lon_var_name) == 1), IndexError('Cannot infer latitude and longitude names from this dataset')
 
     return lat_var_name[0], lon_var_name[0]
+
+def interpolate_dataset_on_lat_lon(ds: xr.Dataset, 
+                                   latitude_vals: list, 
+                                   longitude_vals: list,
+                                   interp_method:str ='bilinear'):
+    """
+    Interpolate dataset to new lat/lon values
+
+    Args:
+        ds (xr.Dataset): Datast to interpolate
+        latitude_vals (list): list of latitude values to interpolate to
+        longitude_vals (list): list of longitude values to interpolate to
+        interp_method (str, optional): name of interpolation method. Defaults to 'bilinear'._
+
+    Returns:
+        xr,Dataset: interpolated dataset
+    """
+        
+    ds_out = xr.Dataset(
+        {
+            'lat': (['lat'], latitude_vals),
+            'lon': (['lon'], longitude_vals),
+        }
+    )
+
+    # Use conservative to preserve global precipitation
+    regridder = xe.Regridder(ds, ds_out, interp_method)
+    regridded_ds = ds.copy()
+    
+    # Make float vars C-contiguous (to avoid warning message and potentially improve performance)
+    for var in list(regridded_ds.data_vars):
+        if regridded_ds[var].values.dtype.kind == 'f':
+            regridded_ds[var].values = np.ascontiguousarray(regridded_ds[var].values)
+            
+    regridded_ds = regridder(regridded_ds)
+
+    return regridded_ds
+
 
 def convert_to_relative_time(ds, zero_time: np.datetime64):
     
