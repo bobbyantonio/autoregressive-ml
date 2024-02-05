@@ -228,7 +228,7 @@ if __name__ == '__main__':
                         help='Load from ERA5') 
     parser.add_argument('--var-to-replace', type=str, default=None,
                         help="Variable to replace with ERA5 input during autoregression",
-                        choices=list(gc.TARGET_SURFACE_VARS) + ['specific_humidity', 'temperature'] # For now limit to the surface vars
+                        choices=list(gc.TARGET_SURFACE_VARS) + ['specific_humidity', 'temperature', 'sea_surface_temperature'] # For now limit to the surface vars
                         )
     parser.add_argument('--cache-inputs', action='store_true',
                         help='If active, then inputs will be cached to allow fast iteration')
@@ -330,7 +330,7 @@ if __name__ == '__main__':
             
             replacement_das = []
             for dt in target_datetimes:
-                if args.var_to_replace in data.ERA5_SURFACE_VARS:
+                if args.var_to_replace in data.ERA5_SURFACE_VARS + ['sea_surface_temperature']:
                     tmp_da = data.load_era5_surface(dt.year, dt.month, dt.day, dt.hour, era5_data_dir=DATASET_FOLDER, 
                                                     vars=[args.var_to_replace], gather_input_datetimes=False)
                 elif args.var_to_replace in data.ERA5_PLEVEL_VARS:
@@ -346,7 +346,7 @@ if __name__ == '__main__':
             era5_target_da = convert_to_relative_time(era5_target_da, zero_time=t0)[args.var_to_replace]
             
             
-            if args.interpolate_to_1000hPa and args.var_to_replace == '2m_temperature':
+            if args.var_to_replace == 'sea_surface_temperature':
                 # For experimenting with replacing t2m with interpolated field between SST and T1000hPa
                 replacement_das = []
                 for dt in target_datetimes:
@@ -357,7 +357,7 @@ if __name__ == '__main__':
 
                     replacement_das.append(tmp_da)
                 era5_target_1000hPa_da = xr.concat(replacement_das, dim='time')
-                era5_target_1000hPa_da = convert_to_relative_time(era5_target_1000hPa_da, zero_time=t0)[args.var_to_replace]
+                era5_target_1000hPa_da = convert_to_relative_time(era5_target_1000hPa_da, zero_time=t0)['temperature']
             
             if args.cache_inputs:
                 with open('cached_replacement_vars.nc', 'wb+') as ofh:
@@ -444,6 +444,11 @@ if __name__ == '__main__':
             
             actual_input_times = current_inputs['time'].values + np.timedelta64(6*chunk_index,'h')
             
+            if args.var_to_replace == 'sea_surface_temperature':
+                actual_replace_var = '2m_temperature'
+            else:
+                actual_replace_var = args.var_to_replace
+            
             # Have to do it this way as other ways like assigning via
             # current_inputs[var_to_replace].loc[dict(time=input_times[t_ix])].values = new_vals
             # Doesn't seem to work
@@ -464,22 +469,33 @@ if __name__ == '__main__':
                         new_val = xr.concat([da1, da2], dim='level')
                     else:
                         
-                        new_val = era5_target_da.sel(time=t).drop_vars('datetime')
+                        if args.var_to_replace  == 'sea_surface_temperature':
+                            new_val = -0.04*era5_target_da.sel(time=t).drop_vars('datetime') + 1.04*era5_target_1000hPa_da.sel(level=1000).sel(time=t).drop_vars(['datetime', 'level'])
+                        else:
+                            new_val = era5_target_da.sel(time=t).drop_vars('datetime')
                         new_val['time'] = input_times[t_ix]
                         
+                        # Have to rename for experiment where sst -> 2mt
+                        new_val.name = actual_replace_var
+                        
                         # Using land sea mask only currently supported with surface variables
-                        if args.replace_uses_lsm:
-
-                            land_points = np.expand_dims(static_ds['land_sea_mask'].values >= 0.5, axis=0)
-                            new_val.values[land_points] = current_inputs[args.var_to_replace].sel(time=input_times[t_ix]).values[land_points]
+                        
+                        if args.replace_uses_lsm or args.var_to_replace in ['sea_surface_temperature']:
+                            # Currently using all points that have a bit of land on them;
+                            # TODO: if using this properly then need to think about points in between land and sea
+                            land_points = np.expand_dims(static_ds['land_sea_mask'].values >0, axis=0)
+                            new_val.values[land_points] = current_inputs[actual_replace_var].sel(time=input_times[t_ix]).values[land_points]
+   
+                        assert np.isnan(new_val.values).sum() ==0
                         
                     new_vals.append(new_val)
                     
                 else:
-                    new_vals.append(current_inputs[args.var_to_replace].sel(time=input_times[t_ix]))
+
+                    new_vals.append(current_inputs[actual_replace_var].sel(time=input_times[t_ix]))
             
             new_da = xr.concat(new_vals, dim='time')
-            new_inputs = xr.merge([new_da, current_inputs[[v for v in current_inputs.data_vars if v != args.var_to_replace]]])
+            new_inputs = xr.merge([new_da, current_inputs[[v for v in current_inputs.data_vars if v != actual_replace_var]]])
             
             new_inputs = new_inputs[list(current_inputs.data_vars)]
             new_inputs = new_inputs[sorted_input_coords_and_vars]

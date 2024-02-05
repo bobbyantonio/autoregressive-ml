@@ -15,6 +15,7 @@ DATASET_FOLDER = '/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5'
 ERA5_SURFACE_VARS = list(gc.TARGET_SURFACE_VARS) + list(gc.EXTERNAL_FORCING_VARS) 
 ERA5_PLEVEL_VARS = list(gc.TARGET_ATMOSPHERIC_VARS)
 ERA5_STATIC_VARS = list(gc.STATIC_VARS)
+ERA5_SEA_VARS = ['sea_surface_temperature']
 
 ERA5_VARNAME_LOOKUP = {'total_precipitation_6hr': 'total_precipitation',
                        'geopotential_at_surface': 'geopotential'}
@@ -111,7 +112,7 @@ def load_era5(var: str,
 
     if pressure_levels is None:
         preprocess_func = None
-        if var not in ERA5_SURFACE_VARS + ERA5_STATIC_VARS:
+        if var not in ERA5_SURFACE_VARS + ERA5_STATIC_VARS + ERA5_SEA_VARS:
             raise ValueError(f'Variable {var} not found in possible surface variable names')
         data_category = 'surface'
     else:
