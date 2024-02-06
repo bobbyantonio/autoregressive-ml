@@ -37,7 +37,7 @@
             "request": "launch",
             "module": "scripts.regrid_data",
             "justMyCode": true,
-            "args": ["--years", "2016", "--output-dir", "/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5_1deg", "--days", "1", "--months", "1", "--resolution", "1"]
+            "args": ["--years", "2016", "--output-dir", "/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5_1deg", "--months", "2", "--resolution", "1"]
         }
     ]
 }

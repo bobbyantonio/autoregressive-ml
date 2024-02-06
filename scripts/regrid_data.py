@@ -42,23 +42,28 @@ if __name__ == '__main__':
     for k, vars in var_collections.items():
         print(f'Regridding {k} variables')
         for var in tqdm(vars):
+
+            era5_var = data.ERA5_VARNAME_LOOKUP.get(var, var)
             for year in args.years:
                 for month in args.months:
-                    for day in args.days:
-                        
-                        days = fetch_era5.format_days(year, month, args.days)
-                        
+                    days = fetch_era5.format_days(year, month, args.days)
+
+                    for day in days:
+                    
                         date_str = f'{year}{int(month):02d}{int(day):02d}'
-                        suffix = f'era5_{var}_{date_str}.nc'
-                        fp_in = os.path.join(data.DATASET_FOLDER, k, var, year,  suffix)
+                        suffix = f'era5_{era5_var}_{date_str}.nc'
+
+                        fp_in = os.path.join(data.DATASET_FOLDER, k, era5_var, year,  suffix)
                         
-                        folder_out = os.path.join(args.output_dir, k, var, year)
+                        folder_out = os.path.join(args.output_dir, k, era5_var, year)
                         os.makedirs(folder_out, exist_ok=True)
                         fp_out = os.path.join(folder_out, suffix)
 
-                        ds = xr.load_dataset(fp_in)
-                        interp_ds = data.interpolate_dataset_on_lat_lon(ds, 
-                                                latitude_vals=np.arange(-90, 90, args.resolution) , 
-                                                longitude_vals=np.arange(0,360, args.resolution),
-                                                interp_method ='conservative')
-                        ds.to_netcdf(fp_out)                
+                        if not os.path.exists(fp_out):
+
+                            ds = xr.load_dataset(fp_in)
+                            interp_ds = data.interpolate_dataset_on_lat_lon(ds, 
+                                                    latitude_vals=np.arange(-90, 90, args.resolution) , 
+                                                    longitude_vals=np.arange(0,360, args.resolution),
+                                                    interp_method ='conservative')
+                            ds.to_netcdf(fp_out)                

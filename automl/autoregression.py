@@ -470,7 +470,7 @@ if __name__ == '__main__':
                     else:
                         
                         if args.var_to_replace  == 'sea_surface_temperature':
-                            new_val = -0.04*era5_target_da.sel(time=t).drop_vars('datetime') + 1.04*era5_target_1000hPa_da.sel(level=1000).sel(time=t).drop_vars(['datetime', 'level'])
+                            new_val = -0.04*era5_target_da.sel(time=t).drop_vars('datetime') + 1.04*current_inputs['temperature'].sel(level=1000).sel(time=input_times[t_ix]).drop_vars(['level'])
                         else:
                             new_val = era5_target_da.sel(time=t).drop_vars('datetime')
                         new_val['time'] = input_times[t_ix]
@@ -484,7 +484,9 @@ if __name__ == '__main__':
                             # Currently using all points that have a bit of land on them;
                             # TODO: if using this properly then need to think about points in between land and sea
                             land_points = np.expand_dims(static_ds['land_sea_mask'].values >0, axis=0)
-                            new_val.values[land_points] = current_inputs[actual_replace_var].sel(time=input_times[t_ix]).values[land_points]
+                            tmp_new_val = new_val.values.copy() # Seems this only works indirectly
+                            tmp_new_val[land_points] = current_inputs[actual_replace_var].sel(time=input_times[t_ix]).values[land_points]
+                            new_val.values = tmp_new_val
    
                         assert np.isnan(new_val.values).sum() ==0
                         

@@ -1,5 +1,5 @@
 #!/bin/bash 
-#SBATCH --job-name=fetch-era5
+#SBATCH --job-name=regrid-era5
 #SBATCH --output=logs/regrid-%A.txt 
 #SBATCH --partition=shared 
 #SBATCH --ntasks=1
@@ -9,4 +9,4 @@
 source ~/.bashrc
 conda activate graphcast
 
-srun python /home/a/antonio/repos/autoregressive-ml/scripts/regrid_data.py --years 2016 --output-dir /network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5_1deg --months 1 2 --resolution 1;
+srun python /home/a/antonio/repos/autoregressive-ml/scripts/regrid_data.py --years 2016 --output-dir /network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5_1deg --days 1 --resolution 1;
