@@ -66,4 +66,4 @@ if __name__ == '__main__':
                                                     latitude_vals=np.arange(-90, 90, args.resolution) , 
                                                     longitude_vals=np.arange(0,360, args.resolution),
                                                     interp_method ='conservative')
-                            ds.to_netcdf(fp_out)                
+                            interp_ds.to_netcdf(fp_out)                
