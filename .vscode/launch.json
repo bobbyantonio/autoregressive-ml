@@ -27,8 +27,8 @@
             "type": "debugpy",
             "request": "launch",
             "module": "automl.autoregression",
-            "justMyCode": true,
-            "args": ["--output-dir", "/home/a/antonio/repos/graphcast-ox/dataset/predictions", "--num-steps", 
+            "justMyCode": false,
+            "args": ["--output-dir", "/home/a/antonio/repos/graphcast-ox/dataset/predictions", "--surface-vars-dir", "/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5", "--plevel-vars-dir", "/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5_1deg/bilinear", "--num-steps", 
             "5", "--year", "2016", "--month", "1", "--day", "1", "--hour", "18", "--var-to-replace", "sea_surface_temperature", "--replace-uses-lsm"]
         },
         {
@@ -36,7 +36,7 @@
             "type": "debugpy",
             "request": "launch",
             "module": "scripts.regrid_data",
-            "justMyCode": true,
+            "justMyCode": false,
             "args": ["--years", "2016", "--output-dir", "/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5_1deg", "--months", "2", "--resolution", "1"]
         }
     ]

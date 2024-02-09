@@ -29,23 +29,7 @@ SURFACE_VARS =  (
                 'toa_incident_solar_radiation', 'total_precipitation', 'sea_surface_temperature'
 )
 
-PRESSURE_LEVEL_VARS = (
-                'potential_vorticity',
-                'specific_rain_water_content',
-                'specific_snow_water_content',
-                'geopotential',
-                'temperature',
-                'u_component_of_wind',
-                'v_component_of_wind',
-                'specific_humidity',
-                'relative_humidity',
-                'vertical_velocity',
-                'vorticity',
-                'divergence',
-                'ozone_mass_mixing_ratio',
-                'specific_cloud_liquid_water_content',
-                'specific_cloud_ice_water_content',
-                'fraction_of_cloud_cover')
+PRESSURE_LEVEL_VARS = data.ERA5_PLEVEL_VARS
 
 cds_api_client = cdsapi.Client()
 

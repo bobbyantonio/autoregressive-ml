@@ -13,7 +13,8 @@ from functools import partial
 from graphcast import graphcast as gc
 
 HOME = Path(__file__).parents[1]
-DATASET_FOLDER = '/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5'
+HI_RES_ERA5_DIR = '/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5'
+LOW_RES_ERA5_DIR = '/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5_1deg/bilinear'
 
 ERA5_SURFACE_VARS = list(gc.TARGET_SURFACE_VARS) + list(gc.EXTERNAL_FORCING_VARS) 
 ERA5_PLEVEL_VARS = list(gc.TARGET_ATMOSPHERIC_VARS)
@@ -22,6 +23,9 @@ ERA5_SEA_VARS = ['sea_surface_temperature']
 
 ERA5_VARNAME_LOOKUP = {'total_precipitation_6hr': 'total_precipitation',
                        'geopotential_at_surface': 'geopotential'}
+
+REGRIDDING_STRATEGY = {'total_precipitation': 'conservative',
+                       'total_precipitation_6hr': 'bilinear'}
 
 def format_dataarray(da):
     
@@ -54,7 +58,7 @@ def add_datetime(ds, start: str,
     ds = ds.assign_coords(datetime=(('batch', 'time'),  dt_arr))
     return ds
 
-def infer_lat_lon_names(ds: xr.Dataset):
+def get_lat_lon_names(ds: xr.Dataset):
     """
     Infer names of latitude / longitude coordinates from the dataset
 
@@ -90,22 +94,26 @@ def interpolate_dataset_on_lat_lon(ds: xr.Dataset,
     Returns:
         xr,Dataset: interpolated dataset
     """
-        
+    lat_var_name, lon_var_name = get_lat_lon_names(ds)
+    
     ds_out = xr.Dataset(
         {
-            'lat': (['lat'], latitude_vals),
-            'lon': (['lon'], longitude_vals),
+            lat_var_name: ([lat_var_name], latitude_vals),
+            lon_var_name: ([lon_var_name], longitude_vals),
         }
     )
 
-    # Use conservative to preserve global precipitation
     regridder = xe.Regridder(ds, ds_out, interp_method)
     regridded_ds = ds.copy()
     
     # Make float vars C-contiguous (to avoid warning message and potentially improve performance)
-    for var in list(regridded_ds.data_vars):
-        if regridded_ds[var].values.dtype.kind == 'f':
-            regridded_ds[var].values = np.ascontiguousarray(regridded_ds[var].values)
+    if isinstance(regridded_ds, xr.Dataset):
+        for var in list(regridded_ds.data_vars):
+            if regridded_ds[var].values.dtype.kind == 'f':
+                regridded_ds[var].values = np.ascontiguousarray(regridded_ds[var].values)
+    else:
+        if regridded_ds.values.dtype.kind == 'f':
+            regridded_ds.values = np.ascontiguousarray(regridded_ds.values)
             
     regridded_ds = regridder(regridded_ds)
 
@@ -129,7 +137,9 @@ def _preprocess_sel_levels(x: xr.Dataset, levels: list):
 def load_era5(var: str,
             datetimes: list,
             era_data_dir: str,
-            pressure_levels: list=None
+            pressure_levels: list=None,
+            output_resolution: float=0.25,
+            interpolation_method: str='bilinear'
             ):
     """Load ERA5 data, focused towards data that the Graphcast model expects (6 hourly)
 
@@ -187,7 +197,22 @@ def load_era5(var: str,
     with dask.config.set(**{'array.slicing.split_large_chunks': True}):
         da = xr.open_mfdataset(fps, preprocess=preprocess_func)
         da = da.sel(time=datetimes)[list(da.data_vars)[0]]
+    
+    # If not in correct output resolution, then regrid
+    # Here we assume that resolution is uniform, and that resolution doesn't go below the 4th decimal place
+    lat_var_name, _ = get_lat_lon_names(da)
+    current_resolution = np.round(np.abs(da[lat_var_name][1] - da[lat_var_name][0]), 4)
+    if current_resolution != output_resolution:
         
+        # Currently assumes global data
+        new_lat_vals = np.arange(-90, 90 + output_resolution, output_resolution)
+        new_lon_vals = np.arange(0, 360, output_resolution)
+
+        da = interpolate_dataset_on_lat_lon(da, 
+                                   latitude_vals=new_lat_vals, 
+                                   longitude_vals=new_lon_vals,
+                                   interp_method = interpolation_method)
+
     if pressure_levels is not None:
         da = da.sel(level=pressure_levels)
         
@@ -207,7 +232,7 @@ def load_era5(var: str,
     
     return da
 
-def load_era5_static(year: int, month: int, day: int, hour: int=1, era5_data_dir: str=DATASET_FOLDER):
+def load_era5_static(year: int, month: int, day: int, hour: int=1, era5_data_dir: str=HI_RES_ERA5_DIR):
     
     static_das = []
 
@@ -229,11 +254,15 @@ def load_era5_surface(year: int,
                       day: int, 
                       hour: int, 
                       gather_input_datetimes: bool=True,
-                      era5_data_dir: str=DATASET_FOLDER, 
-                      vars: list=ERA5_SURFACE_VARS):
+                      era5_data_dir: str=HI_RES_ERA5_DIR, 
+                      vars: list=ERA5_SURFACE_VARS,
+                      low_res_vars: list=None):
     
     if not isinstance(vars, list) and not isinstance(vars, tuple):
         vars = [vars]
+
+    if not isinstance(vars, list) and not isinstance(vars, tuple):
+        low_res_vars = [low_res_vars]
         
     surf_das = {}
     time_sel = pd.date_range(start=datetime.datetime(year,month,day,hour) - datetime.timedelta(hours=12), 
@@ -244,7 +273,13 @@ def load_era5_surface(year: int,
     
     for var in tqdm(vars):
 
-        tmp_da = load_era5(var, time_sel, era_data_dir=era5_data_dir).load()
+        if low_res_vars is not None:
+            if var in low_res_vars:
+                tmp_data_dir = LOW_RES_ERA5_DIR
+            else:
+                tmp_data_dir = HI_RES_ERA5_DIR
+
+        tmp_da = load_era5(var, time_sel, era_data_dir=tmp_data_dir).load()
 
         tmp_da = tmp_da.expand_dims({'batch': 1})
 
@@ -270,8 +305,9 @@ def load_era5_plevel(year: int,
                      hour: int,
                      gather_input_datetimes: bool=True,
                      pressure_levels: list=gc.PRESSURE_LEVELS_ERA5_37,
-                     era5_data_dir: str=DATASET_FOLDER, 
-                     vars: list=ERA5_PLEVEL_VARS):
+                     era5_data_dir: str=HI_RES_ERA5_DIR, 
+                     vars: list=ERA5_PLEVEL_VARS,
+                      low_res_vars: list=None):
     
     if not isinstance(vars, list) and not isinstance(vars, tuple):
         vars = [vars]
@@ -285,8 +321,13 @@ def load_era5_plevel(year: int,
         time_sel = time_sel[-1:]
 
     for var in tqdm(vars):
+        if low_res_vars is not None:
+            if var in low_res_vars:
+                tmp_data_dir = LOW_RES_ERA5_DIR
+            else:
+                tmp_data_dir = HI_RES_ERA5_DIR
         
-        tmp_da = load_era5(var, time_sel, era_data_dir=era5_data_dir,
+        tmp_da = load_era5(var, time_sel, era_data_dir=tmp_data_dir,
                         pressure_levels=pressure_levels
                         ).load()
                     

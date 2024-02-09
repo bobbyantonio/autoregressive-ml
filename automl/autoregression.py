@@ -26,6 +26,7 @@ import haiku as hk
 import jax
 import pickle
 import numpy as np
+import yaml
 import xarray as xr
 from tqdm import tqdm
 import pandas as pd
@@ -45,8 +46,9 @@ sys.path.append('/home/a/antonio/repos/graphcast-ox/data_prep')
 
 from automl import data
 
-DATASET_FOLDER = '/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5'
 GRAPHCAST_DIR = '/home/a/antonio/repos/graphcast-ox'
+HI_RES_ERA5_DIR ='/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5'
+LOW_RES_ERA5_DIR = '/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5_1deg/bilinear'
 OUTPUT_VARS = [
     '2m_temperature', 'total_precipitation_6hr', '10m_v_component_of_wind', '10m_u_component_of_wind', 'specific_humidity', 'temperature'
 ]
@@ -213,7 +215,11 @@ if __name__ == '__main__':
     
     parser = ArgumentParser()
     parser.add_argument('--output-dir', type=str, required=True,
-                        help="Folder to save data to")
+                        help="Folder to save to")
+    parser.add_argument('--surface-vars-dir', type=str, required=True,
+                    help="Folder to load ERA5 surface variables from")
+    parser.add_argument('--plevel-vars-dir', type=str, required=True,
+                    help="Folder to load ERA5 pressure level variables from")
     parser.add_argument('--num-steps', type=int, required=True,
                         help='Number of autoregressive steps to run for')
     parser.add_argument('--year', type=int, required=True,
@@ -229,6 +235,10 @@ if __name__ == '__main__':
     parser.add_argument('--var-to-replace', type=str, default=None,
                         help="Variable to replace with ERA5 input during autoregression",
                         choices=list(gc.TARGET_SURFACE_VARS) + ['specific_humidity', 'temperature', 'sea_surface_temperature'] # For now limit to the surface vars
+                        )
+    parser.add_argument('--lowres-var', type=str, default=None,
+                        help="For experiment replacing one var with a low resolution version",
+                        choices=list(gc.TARGET_ATMOSPHERIC_VARS) 
                         )
     parser.add_argument('--cache-inputs', action='store_true',
                         help='If active, then inputs will be cached to allow fast iteration')
@@ -257,8 +267,7 @@ if __name__ == '__main__':
     print(f'Running for {year}-{month:02d}-{day:02d} {hour_start}')
     
     logger.info(f'Platform: {xla_bridge.get_backend().platform}')
-    
-    os.makedirs(args.output_dir, exist_ok=True)
+
     all_datetimes = [datetime.datetime(year, month, day, hour_start) + 
                             datetime.timedelta(hours=6*n - 12) for n in range(args.num_steps+2)]
     time_lookup = { int((d - all_datetimes[1]).total_seconds()*1e9) : d for d in all_datetimes}
@@ -266,15 +275,15 @@ if __name__ == '__main__':
     if not args.cache_inputs or not os.path.exists('cached_inputs.nc'):
         ########
         # Static variables
-        static_ds = data.load_era5_static(year=year, month=month, day=day, hour=hour_start, era5_data_dir=DATASET_FOLDER)
+        static_ds = data.load_era5_static(year=year, month=month, day=day, hour=hour_start, era5_data_dir=args.surface_vars_dir)
 
         ######
         # Surface
-        surface_ds = data.load_era5_surface(year=year, month=month, day=day, hour=hour_start, era5_data_dir=DATASET_FOLDER)
+        surface_ds = data.load_era5_surface(year=year, month=month, day=day, hour=hour_start, era5_data_dir=args.surface_vars_dir)
 
         #############
         # Pressure levels 
-        plevel_ds = data.load_era5_plevel(year=year, month=month, day=day, hour=hour_start, era5_data_dir=DATASET_FOLDER)
+        plevel_ds = data.load_era5_plevel(year=year, month=month, day=day, hour=hour_start, era5_data_dir=args.plevel_vars_dir, low_res_vars=[args.low_res_var])
         prepared_ds = xr.merge([static_ds, surface_ds, plevel_ds])
         prepared_ds = convert_to_relative_time(prepared_ds, prepared_ds['time'][1])
 
@@ -292,12 +301,15 @@ if __name__ == '__main__':
         solar_rad_das = []
         for dt in dts_to_fill:
             y, m, d, h = unpack_np_datetime(dt)
+            
+            # We load this from a different directory, as it is assumed we will have 
+            # this data in proper resolution
             tmp_da = data.load_era5(var='toa_incident_solar_radiation',
                                                 datetimes=[datetime.datetime(year=y,
                                                                             month=m,
                                                                             day=d,
                                                                             hour=h)],
-                                                era_data_dir=DATASET_FOLDER).load()
+                                                era_data_dir=HI_RES_ERA5_DIR).load()
             tmp_da = tmp_da.expand_dims({'batch': 1})
             solar_rad_das.append(tmp_da)
 
@@ -331,11 +343,11 @@ if __name__ == '__main__':
             replacement_das = []
             for dt in target_datetimes:
                 if args.var_to_replace in data.ERA5_SURFACE_VARS + ['sea_surface_temperature']:
-                    tmp_da = data.load_era5_surface(dt.year, dt.month, dt.day, dt.hour, era5_data_dir=DATASET_FOLDER, 
+                    tmp_da = data.load_era5_surface(dt.year, dt.month, dt.day, dt.hour, era5_data_dir=args.surface_vars_dir, 
                                                     vars=[args.var_to_replace], gather_input_datetimes=False)
                 elif args.var_to_replace in data.ERA5_PLEVEL_VARS:
                     tmp_da = data.load_era5_plevel(dt.year, dt.month, dt.day, 
-                                                   dt.hour, era5_data_dir=DATASET_FOLDER,
+                                                   dt.hour, era5_data_dir=args.plevel_vars_dir,
                                                    pressure_levels=[1000],
                                                    vars=[args.var_to_replace], gather_input_datetimes=False)
                 else:
@@ -346,18 +358,18 @@ if __name__ == '__main__':
             era5_target_da = convert_to_relative_time(era5_target_da, zero_time=t0)[args.var_to_replace]
             
             
-            if args.var_to_replace == 'sea_surface_temperature':
-                # For experimenting with replacing t2m with interpolated field between SST and T1000hPa
-                replacement_das = []
-                for dt in target_datetimes:
-                    tmp_da = data.load_era5_plevel(dt.year, dt.month, dt.day, 
-                                                    dt.hour, era5_data_dir=DATASET_FOLDER,
-                                                    pressure_levels=[1000],
-                                                    vars=['temperature'], gather_input_datetimes=False)
+            # if args.var_to_replace == 'sea_surface_temperature':
+            #     # For experimenting with replacing t2m with interpolated field between SST and T1000hPa
+            #     replacement_das = []
+            #     for dt in target_datetimes:
+            #         tmp_da = data.load_era5_plevel(dt.year, dt.month, dt.day, 
+            #                                         dt.hour, era5_data_dir=SURFACE_DATA_DIR,
+            #                                         pressure_levels=[1000],
+            #                                         vars=['temperature'], gather_input_datetimes=False)
 
-                    replacement_das.append(tmp_da)
-                era5_target_1000hPa_da = xr.concat(replacement_das, dim='time')
-                era5_target_1000hPa_da = convert_to_relative_time(era5_target_1000hPa_da, zero_time=t0)['temperature']
+            #         replacement_das.append(tmp_da)
+            #     era5_target_1000hPa_da = xr.concat(replacement_das, dim='time')
+            #     era5_target_1000hPa_da = convert_to_relative_time(era5_target_1000hPa_da, zero_time=t0)['temperature']
             
             if args.cache_inputs:
                 with open('cached_replacement_vars.nc', 'wb+') as ofh:
@@ -370,6 +382,19 @@ if __name__ == '__main__':
     else:
         print('Skipping variable replacement since none specified', flush=True)
     
+    if args.var_to_replace is not None:
+        
+        suffix= '_lsm' if args.replace_uses_lsm else ''
+        save_dir = os.path.join(args.output_dir, f'replace_{args.var_to_replace}{suffix}')
+    
+    else:
+        save_dir = args.output_dir
+    os.makedirs(save_dir, exist_ok=True)
+    args_dict = vars(args)
+
+    with open(os.path.join(save_dir, 'args.yaml'), 'w+') as ofh:
+        yaml.dump(args_dict, ofh)
+
     ############################
 
     task_config_dict = dataclasses.asdict(task_config)
@@ -525,14 +550,7 @@ if __name__ == '__main__':
         current_inputs = rollout._get_next_inputs(current_inputs, next_frame)
         prediction = prediction.assign_coords(time=actual_target_relative_time+t0)
         
-        if args.var_to_replace is not None:
-            
-            suffix= '_lsm' if args.replace_uses_lsm else ''
-            save_dir = os.path.join(args.output_dir, f'replace_{args.var_to_replace}{suffix}')
-        
-        else:
-            save_dir = args.output_dir
-        os.makedirs(save_dir, exist_ok=True)
+
         
         fp = os.path.join(save_dir, 
                           f'pred_{year}{month:02d}{day:02d}_n{chunk_index}.nc')

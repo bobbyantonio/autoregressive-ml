@@ -5,9 +5,9 @@
 #SBATCH --ntasks=1
 #SBATCH --time=2-00:00:00 
 #SBATCH --mem-per-cpu=100gb
-#SBATCH --array=1-12
+#SBATCH --array=5
 
 source ~/.bashrc
 conda activate graphcast
 
-srun python /home/a/antonio/repos/autoregressive-ml/scripts/regrid_data.py --years 2016 --output-dir /network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5_1deg --days 1 15 --months ${SLURM_ARRAY_TASK_ID} --resolution 1;
+srun python /home/a/antonio/repos/autoregressive-ml/scripts/regrid_data.py --years 2016 --output-dir /network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5_1deg --days 1 --months ${SLURM_ARRAY_TASK_ID} --resolution 1;
