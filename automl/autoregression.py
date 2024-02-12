@@ -216,10 +216,6 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--output-dir', type=str, required=True,
                         help="Folder to save to")
-    parser.add_argument('--surface-vars-dir', type=str, required=True,
-                    help="Folder to load ERA5 surface variables from")
-    parser.add_argument('--plevel-vars-dir', type=str, required=True,
-                    help="Folder to load ERA5 pressure level variables from")
     parser.add_argument('--num-steps', type=int, required=True,
                         help='Number of autoregressive steps to run for')
     parser.add_argument('--year', type=int, required=True,
@@ -236,7 +232,9 @@ if __name__ == '__main__':
                         help="Variable to replace with ERA5 input during autoregression",
                         choices=list(gc.TARGET_SURFACE_VARS) + ['specific_humidity', 'temperature', 'sea_surface_temperature'] # For now limit to the surface vars
                         )
-    parser.add_argument('--lowres-var', type=str, default=None,
+    parser.add_argument('--low-res-plevel-vars', action='store_true',
+                        help='If active, then pressure level vars will be low resolution')
+    parser.add_argument('--low-res-var', type=str, default=None,
                         help="For experiment replacing one var with a low resolution version",
                         choices=list(gc.TARGET_ATMOSPHERIC_VARS) 
                         )
@@ -263,6 +261,14 @@ if __name__ == '__main__':
             hour_start = np.random.choice([0,6,12,18])
     else:
         hour_start = int(args.hour_start)
+        
+    if args.low_res_plevel_vars:
+        plevel_vars_dir = LOW_RES_ERA5_DIR
+    else:
+        plevel_vars_dir = HI_RES_ERA5_DIR
+    
+    surface_vars_dir = HI_RES_ERA5_DIR
+        
     
     print(f'Running for {year}-{month:02d}-{day:02d} {hour_start}')
     
@@ -275,15 +281,15 @@ if __name__ == '__main__':
     if not args.cache_inputs or not os.path.exists('cached_inputs.nc'):
         ########
         # Static variables
-        static_ds = data.load_era5_static(year=year, month=month, day=day, hour=hour_start, era5_data_dir=args.surface_vars_dir)
+        static_ds = data.load_era5_static(year=year, month=month, day=day, hour=hour_start, era5_data_dir=surface_vars_dir)
 
         ######
         # Surface
-        surface_ds = data.load_era5_surface(year=year, month=month, day=day, hour=hour_start, era5_data_dir=args.surface_vars_dir)
+        surface_ds = data.load_era5_surface(year=year, month=month, day=day, hour=hour_start, era5_data_dir=surface_vars_dir)
 
         #############
         # Pressure levels 
-        plevel_ds = data.load_era5_plevel(year=year, month=month, day=day, hour=hour_start, era5_data_dir=args.plevel_vars_dir, low_res_vars=[args.low_res_var])
+        plevel_ds = data.load_era5_plevel(year=year, month=month, day=day, hour=hour_start, era5_data_dir=plevel_vars_dir, low_res_vars=[args.low_res_var])
         prepared_ds = xr.merge([static_ds, surface_ds, plevel_ds])
         prepared_ds = convert_to_relative_time(prepared_ds, prepared_ds['time'][1])
 
@@ -302,7 +308,7 @@ if __name__ == '__main__':
         for dt in dts_to_fill:
             y, m, d, h = unpack_np_datetime(dt)
             
-            # We load this from a different directory, as it is assumed we will have 
+            # We always load this from a hi-res source, as it is assumed we will have 
             # this data in proper resolution
             tmp_da = data.load_era5(var='toa_incident_solar_radiation',
                                                 datetimes=[datetime.datetime(year=y,
@@ -343,11 +349,11 @@ if __name__ == '__main__':
             replacement_das = []
             for dt in target_datetimes:
                 if args.var_to_replace in data.ERA5_SURFACE_VARS + ['sea_surface_temperature']:
-                    tmp_da = data.load_era5_surface(dt.year, dt.month, dt.day, dt.hour, era5_data_dir=args.surface_vars_dir, 
+                    tmp_da = data.load_era5_surface(dt.year, dt.month, dt.day, dt.hour, era5_data_dir=surface_vars_dir, 
                                                     vars=[args.var_to_replace], gather_input_datetimes=False)
                 elif args.var_to_replace in data.ERA5_PLEVEL_VARS:
                     tmp_da = data.load_era5_plevel(dt.year, dt.month, dt.day, 
-                                                   dt.hour, era5_data_dir=args.plevel_vars_dir,
+                                                   dt.hour, era5_data_dir=plevel_vars_dir,
                                                    pressure_levels=[1000],
                                                    vars=[args.var_to_replace], gather_input_datetimes=False)
                 else:

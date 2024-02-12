@@ -3,7 +3,7 @@
 source ~/.bashrc
 conda activate graphcast
 
-python -m automl.autoregression --output-dir /network/group/aopp/predict/HMC005_ANTONIO_EERIE/low_res_plevel_hi_res_surface_conservative--num-steps 320 --year 2016 --month 1 --day 1 --hour-start 18 
+# python -m automl.autoregression --output-dir /network/group/aopp/predict/HMC005_ANTONIO_EERIE/low_res_plevel_hi_res_surface_conservative--num-steps 320 --year 2016 --month 1 --day 1 --hour-start 18 
 # for year in 2016
 # do  
 #     echo "Evaluating year $year"
@@ -42,3 +42,15 @@ python -m automl.autoregression --output-dir /network/group/aopp/predict/HMC005_
 #     echo "Evaluating var $var"
 #     python -m automl.autoregression --input-dir /network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5 --num-steps 320 --year 2016 --month 1 --day 1 --hour-start 18 --var-to-replace $var --replace-uses-lsm
 # done
+
+# Sensitity testing for low res variables
+
+for lowresvar in temperature geopotential u_component_of_wind v_component_of_wind vertical_velocity specific_humidity
+do
+    echo "Evaluating $lowresvar as low res"
+    for month in 1 7
+    do
+
+        python -m automl.autoregression --output-dir /network/group/aopp/predict/HMC005_ANTONIO_EERIE/predictions/low_res_${lowresvar} --num-steps 40 --year 2016 --month ${month} --day 1 --hour-start 18 
+    done
+done

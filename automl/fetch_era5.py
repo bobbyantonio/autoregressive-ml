@@ -13,7 +13,7 @@ from argparse import ArgumentParser
 
 HOME = Path(__file__).parents[1]
 
-sys.path.append( str(HOME / 'automl'))
+sys.path.append( str(HOME))
 
 from automl import data
 
@@ -117,7 +117,7 @@ if __name__ == '__main__':
                         help='Collect surface variables')
     parser.add_argument('--plevels', action='store_true',
                         help='Collect pressure level data')
-    parser.add_argument('--pressure-level',  nargs='+', default=[None],
+    parser.add_argument('--pressure-levels',  nargs='+', default=[None],
                     help='Specific pressure levels to collect for')
     parser.add_argument('--vars', nargs='+', default=None,
                     help='Specific variables to collect data for')  
@@ -126,7 +126,9 @@ if __name__ == '__main__':
     parser.add_argument('--days', nargs='+', default=range(1,32),
                     help='Days to collect data for') 
     parser.add_argument('--resolution', type=float, default=None,
-                    help='Resolution to save to (will regrid if != 0.25)')  
+                    help='Resolution to save to (will regrid if != 0.25)') 
+    parser.add_argument('--force-overwrite', action='store_true',
+                        help='Force overwrite of existing data.')
     args = parser.parse_args()
     
     if args.vars:
@@ -149,30 +151,32 @@ if __name__ == '__main__':
                     if var in SURFACE_VARS:
                         
                         var_dir = os.path.join(args.output_dir, 'surface', var, str(year))
-                        pressure_level=None
+                        pressure_levels=None
                         
                     elif var in PRESSURE_LEVEL_VARS:
                         
-                        if args.pressure_level is None:
-                            pressure_level = PRESSURE_LEVELS_ERA5_37
+                        if args.pressure_levels is None:
+                            pressure_levels = PRESSURE_LEVELS_ERA5_37
                         else:
-                            pressure_level = args.pressure_level
+                            pressure_levels = args.pressure_levels
 
                         var_dir = os.path.join(args.output_dir, 'plevels', var, str(year))
                     
                     output_prefix = os.path.join(var_dir, f'era5_{var}_{year}{padded_month}')
                         
                     os.makedirs(var_dir, exist_ok=True)
+                    
+                    if not args.force_overwrite:    
+                        # Don't overwrite existing data 
                         
-                    # Don't overwrite existing data 
-                    days = [d for d in days if not os.path.exists(output_prefix + f'{d}.nc')]
+                        days = [d for d in days if not os.path.exists(output_prefix + f'{d}.nc')]
                     
                     if len(days)> 0:
                         retrieve_data(year=year,
                                     months=[padded_month],
                                     days=days,
                                     var=var,
-                                    pressure_level=pressure_level,
+                                    pressure_level=pressure_levels,
                                     output_resolution=args.resolution,
                                     output_prefix=os.path.join(var_dir, f'era5_{var}_{year}{padded_month}'))
                         
@@ -180,13 +184,13 @@ if __name__ == '__main__':
         if args.surface:
             subfolder_name = 'surface'
             vars = SURFACE_VARS
-            pressure_level=None
+            pressure_levels=None
 
         elif args.plevels: 
             subfolder_name = 'plevels'
             vars = PRESSURE_LEVEL_VARS
 
-            pressure_level=PRESSURE_LEVELS_ERA5_37
+            pressure_levels=PRESSURE_LEVELS_ERA5_37
         else:
             raise ValueError('Input arguments invalid') 
             
@@ -219,7 +223,7 @@ if __name__ == '__main__':
                                 months=[padded_month],
                                 days=days,
                                 var=var,
-                                pressure_level=pressure_level,
+                                pressure_level=pressure_levels,
                                 output_resolution=args.resolution,
                                 output_prefix=os.path.join(var_dir, f'era5_{var}_{year}{padded_month}'))
         

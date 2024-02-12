@@ -272,12 +272,10 @@ def load_era5_surface(year: int,
         time_sel = time_sel[-1:]
     
     for var in tqdm(vars):
-
+        tmp_data_dir = HI_RES_ERA5_DIR
         if low_res_vars is not None:
             if var in low_res_vars:
-                tmp_data_dir = LOW_RES_ERA5_DIR
-            else:
-                tmp_data_dir = HI_RES_ERA5_DIR
+                tmp_data_dir = LOW_RES_ERA5_DIR               
 
         tmp_da = load_era5(var, time_sel, era_data_dir=tmp_data_dir).load()
 
@@ -321,11 +319,10 @@ def load_era5_plevel(year: int,
         time_sel = time_sel[-1:]
 
     for var in tqdm(vars):
+        tmp_data_dir = HI_RES_ERA5_DIR
         if low_res_vars is not None:
             if var in low_res_vars:
-                tmp_data_dir = LOW_RES_ERA5_DIR
-            else:
-                tmp_data_dir = HI_RES_ERA5_DIR
+                tmp_data_dir = LOW_RES_ERA5_DIR               
         
         tmp_da = load_era5(var, time_sel, era_data_dir=tmp_data_dir,
                         pressure_levels=pressure_levels
