@@ -70,27 +70,51 @@ def format_days(year: str, month:str, days:str):
 
 def save_array_to_separate_hours(output_dir, da, var_name):
 
-    # Save to numpy array, using float 16. 
     for tmp_da in da.transpose('time', ...):
         tmp_time = pd.Timestamp(tmp_da['time'].item()).to_pydatetime()
         tmp_da = data.format_dataarray(tmp_da).drop('time')
 
-        output_fp = os.path.join(output_dir, f"era5_{var_name}_{tmp_time.strftime('%Y%m%d_%H')}.npz")
-        np.savez_compressed(output_fp, tmp_da.values.astype(np.float16))
+        output_fp = os.path.join(output_dir, f"era5_{var_name}_{tmp_time.strftime('%Y%m%d_%H')}.nc")
+        tmp_da.to_netcdf(output_fp)
 
-        lat_vals = tmp_da['lat'].values
-        lon_vals = tmp_da['lon'].values
-        # Save metadata alongside
-        metadata_dict = {'min_lat': str(min(lat_vals)),
-                        'max_lat': str(max(lat_vals)),
-                        'min_lon': str(min(lon_vals)),
-                        'max_lon': str(max(lon_vals)),
-                        'lat_step_size': str(lat_vals[1] - lat_vals[0]),
-                        'lon_step_size': str(lon_vals[1] - lon_vals[0]),
-                        'pressure_levels': [] if 'level' not in tmp_da.coords else [str(int(l)) for l in tmp_da.level.values]}
+        # lat_vals = tmp_da['lat'].values
+        # lon_vals = tmp_da['lon'].values
+        # # Save metadata alongside
+        # metadata_dict = {'min_lat': str(min(lat_vals)),
+        #                 'max_lat': str(max(lat_vals)),
+        #                 'min_lon': str(min(lon_vals)),
+        #                 'max_lon': str(max(lon_vals)),
+        #                 'lat_step_size': str(lat_vals[1] - lat_vals[0]),
+        #                 'lon_step_size': str(lon_vals[1] - lon_vals[0]),
+        #                 'pressure_levels': [] if 'level' not in tmp_da.coords else [str(int(l)) for l in tmp_da.level.values]}
 
-        utils.write_to_yaml(fpath=output_fp.replace('.npz', '.yml'), data=metadata_dict)
+        # utils.write_to_yaml(fpath=output_fp.replace('.nc', '.yml'), data=metadata_dict)
 
+def save_array_to_separate_days(output_dir, da, var_name):
+
+    all_datetimes = [pd.Timestamp(item).to_pydatetime() for item in da['time'].values]
+    all_yrmonthdays = sorted(set([(dt.year, dt.month, dt.day) for dt in all_datetimes]))
+
+    for ymd in all_yrmonthdays:
+        relevant_dts = [dt for dt in all_datetimes if dt.year==ymd[0] and dt.month==ymd[1] and dt.day==ymd[2]]
+        tmp_da = da.sel(time=relevant_dts)
+        tmp_da = data.format_dataarray(tmp_da)
+        
+        output_fp = os.path.join(output_dir, f"era5_{var_name}_{ymd[0]}{ymd[1]:02d}{ymd[2]:02d}.nc")
+        tmp_da.to_netcdf(output_fp)
+
+        # lat_vals = tmp_da['lat'].values
+        # lon_vals = tmp_da['lon'].values
+        # # Save metadata alongside
+        # metadata_dict = {'min_lat': str(min(lat_vals)),
+        #                 'max_lat': str(max(lat_vals)),
+        #                 'min_lon': str(min(lon_vals)),
+        #                 'max_lon': str(max(lon_vals)),
+        #                 'lat_step_size': str(lat_vals[1] - lat_vals[0]),
+        #                 'lon_step_size': str(lon_vals[1] - lon_vals[0]),
+        #                 'pressure_levels': [] if 'level' not in tmp_da.coords else [str(int(l)) for l in tmp_da.level.values]}
+
+        # utils.write_to_yaml(fpath=output_fp.replace('.nc', '.yml'), data=metadata_dict)
 
 def retrieve_data(year:int, 
                     output_dir:str,
@@ -139,14 +163,10 @@ def retrieve_data(year:int,
                                    interp_method ='conservative')
             ds.to_netcdf(fp.name + 'regridded')
             output_prefix += f'_{output_resolution}deg'
-    
-        ### 
-        # Split into days to make it easier to look up values at daily level
 
         ds = xr.open_dataset(fp.name)
-        da = ds[list(ds.data_vars)[0]]
+    return ds
 
-        save_array_to_separate_hours(output_dir=output_dir, da=da, var_name=var)
         
 
 if __name__ == '__main__':
@@ -215,6 +235,8 @@ if __name__ == '__main__':
         era5_var_name = data.ERA5_VARNAME_LOOKUP.get(var, var)
         
         for year in args.years:
+            print(f'** Fetching year={year}', flush=True)
+
             var_dir = os.path.join(args.output_dir, data_category, var, str(year))
 
             # First check that this data isn't already in the AOPP data; if so then just copy from there
@@ -230,6 +252,7 @@ if __name__ == '__main__':
                         hours = range(24)
                     else:
                         hours = [0,6,12,18]
+
                     datetimes_to_save = []
                     for month in args.months:
                         days = format_days(year, month, args.days)
@@ -244,72 +267,35 @@ if __name__ == '__main__':
 
                     if pressure_levels is not None:
                         ds = ds.sel(level=pressure_levels)
-                    
-                    da= ds[list(ds.data_vars)[0]]
 
-                    save_array_to_separate_hours(output_dir=var_dir, da=da, var_name=var)
-                    
-                    continue
+                else:
 
-            print(f'** Fetching year={year}', flush=True)
-            
-            for month in args.months:
-                
-                print(f'** Fetching month={month}', flush=True)
-                
-                padded_month =f'{int(month):02d}'
-                
-                days = format_days(year, month, args.days)
-                                    
-                os.makedirs(var_dir, exist_ok=True)
-                
-                if not args.force_overwrite:    
-                    # Don't overwrite existing data 
-                    
-                    days = [d for d in days if not os.path.exists(os.path.join(var_dir, f'era5_{var}_{year}{padded_month}{d}.nc'))]
-                
-                if len(days)> 0:
-                    retrieve_data(year=year,
-                                month=padded_month,
-                                days=days,
-                                var=var,
-                                pressure_level=pressure_levels,
-                                output_resolution=args.resolution,
-                                output_dir=var_dir)
-                    
-    # else: 
-        
-            
-    #     for var in vars:
-    #         print(f'**Fetching var={var}', flush=True)
-            
-            
-    #         for year in args.years:
-                
-    #             print(f'** Fetching year={year}', flush=True)
-                
-    #             var_dir = os.path.join(args.output_dir,  subfolder_name, var, str(year))
-    #             os.makedirs(var_dir, exist_ok=True)
+                    for month in args.months:
                         
-    #             for month in args.months:
-                    
-    #                 print(f'** Fetching month={month}', flush=True)
-                    
-    #                 padded_month =f'{int(month):02d}'
-    #                 days = format_days(year, month, args.days)
-                    
-    #                 output_prefix=os.path.join(var_dir, f'era5_{var}_{year}{padded_month}')
-                    
-    #                 # Don't overwrite existing data 
-    #                 # days = [d for d in days if not os.path.exists(output_prefix + f'{d}.nc')]
-                    
-    #                 # if len(days)> 0:
-                
-    #                 retrieve_data(year=year,
-    #                             months=[padded_month],
-    #                             days=days,
-    #                             var=var,
-    #                             pressure_level=pressure_levels,
-    #                             output_resolution=args.resolution,
-    #                             output_prefix=os.path.join(var_dir, f'era5_{var}_{year}{padded_month}'))
+                        print(f'** Fetching month={month}', flush=True)
+                        
+                        padded_month =f'{int(month):02d}'
+                        
+                        days = format_days(year, month, args.days)
+                                            
+                        os.makedirs(var_dir, exist_ok=True)
+                        
+                        if not args.force_overwrite:    
+                            # Don't overwrite existing data 
+                            
+                            days = [d for d in days if not os.path.exists(os.path.join(var_dir, f'era5_{var}_{year}{padded_month}{d}.nc'))]
+                        
+                        if len(days)> 0:
+                            retrieve_data(year=year,
+                                        month=padded_month,
+                                        days=days,
+                                        var=var,
+                                        pressure_level=pressure_levels,
+                                        output_resolution=args.resolution,
+                                        output_dir=var_dir)
+                            
+                # Save dataarray in day chunks
+                da= ds[list(ds.data_vars)[0]]
+                save_array_to_separate_days(output_dir=var_dir, da=da, var_name=var)
+
         
