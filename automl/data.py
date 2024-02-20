@@ -16,10 +16,27 @@ HOME = Path(__file__).parents[1]
 HI_RES_ERA5_DIR = '/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5'
 LOW_RES_ERA5_DIR = '/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5_1deg/bilinear'
 
-ERA5_SURFACE_VARS = list(gc.TARGET_SURFACE_VARS) + list(gc.EXTERNAL_FORCING_VARS) 
-ERA5_PLEVEL_VARS = list(gc.TARGET_ATMOSPHERIC_VARS)
-ERA5_STATIC_VARS = list(gc.STATIC_VARS)
-ERA5_SEA_VARS = ['sea_surface_temperature']
+ERA5_SURFACE_VARS = TARGET_SURFACE_VARS = (
+    "2m_temperature",
+    "mean_sea_level_pressure",
+    "10m_v_component_of_wind",
+    "10m_u_component_of_wind",
+    "total_precipitation_6hr",
+    "toa_incident_solar_radiation")
+
+ERA5_PLEVEL_VARS = (
+    "temperature",
+    "geopotential",
+    "u_component_of_wind",
+    "v_component_of_wind",
+    "vertical_velocity",
+    "specific_humidity",
+)
+ERA5_STATIC_VARS = (
+    "geopotential_at_surface",
+    "land_sea_mask",
+)
+ERA5_SEA_VARS = ('sea_surface_temperature',)
 
 ERA5_VARNAME_LOOKUP = {'total_precipitation_6hr': 'total_precipitation',
                        'geopotential_at_surface': 'geopotential'}
@@ -30,10 +47,13 @@ REGRIDDING_STRATEGY = {'total_precipitation': 'conservative',
                        'total_precipitation_6hr': 'bilinear'}
 
 def format_dataarray(da):
-    
-    rename_dict = {'latitude': 'lat', 'longitude': 'lon' }
 
-    da = da.rename(rename_dict)
+    lat_var_name, _ = get_lat_lon_names(da)
+    
+    if lat_var_name == 'latitude':
+        rename_dict = {'latitude': 'lat', 'longitude': 'lon' }
+
+        da = da.rename(rename_dict)
     
     da = da.sortby('lat', ascending=True)
     da = da.sortby('lon', ascending=True)

@@ -125,7 +125,7 @@ def retrieve_data(year:int,
                     output_resolution: float=None
                     ):
     
-    output_prefix=os.path.join(output_dir, f'era5_{var}_{year}{month:02d}')
+    output_prefix=os.path.join(output_dir, f'era5_{var}_{year}{int(month):02d}')
 
     if var=='total_precipitation':
         # Collect full history for precip since it needs to be aggregated (the others are subsamples)
@@ -192,20 +192,12 @@ if __name__ == '__main__':
                     help='Resolution to save to (will regrid if != 0.25)') 
     parser.add_argument('--force-overwrite', action='store_true',
                         help='Force overwrite of existing data.')
-    parser.add_argument('--use-aopp-data', action='store_true',
-                        help='Use existing AOPP data, if available.')
     args = parser.parse_args()
 
     if args.surface:
-        subfolder_name = 'surface'
         vars = SURFACE_VARS
-        pressure_levels=None
-
     elif args.plevels: 
-        subfolder_name = 'plevels'
         vars = PRESSURE_LEVEL_VARS
-
-        pressure_levels=PRESSURE_LEVELS_ERA5_37
     elif args.vars:
         vars = args.vars
     else:
@@ -242,7 +234,7 @@ if __name__ == '__main__':
             # First check that this data isn't already in the AOPP data; if so then just copy from there
             short_era5_name = ERA5_SHORT_NAME_LOOKUP[data_category].get(era5_var_name)
 
-            if short_era5_name is not None and args.use_aopp_data: # Short names only provided where there is some data for that variable
+            if short_era5_name is not None: # Short names only provided where there is some data for that variable
 
                 existing_fp = os.path.join(AOPP_ERA5_DIR, f'{short_era5_name}/1hr/{short_era5_name}_1hr_ERA5_{args.resolution}x{args.resolution}_{year}01-{year}12.nc')
                 if os.path.exists(existing_fp):
@@ -268,34 +260,36 @@ if __name__ == '__main__':
                     if pressure_levels is not None:
                         ds = ds.sel(level=pressure_levels)
 
-                else:
+                    da = ds[list(ds.data_vars)[0]]
+                    save_array_to_separate_days(output_dir=var_dir, da=da, var_name=var)
 
-                    for month in args.months:
+            else:
+
+                for month in args.months:
+                    
+                    print(f'** Fetching month={month}', flush=True)
+                    
+                    padded_month =f'{int(month):02d}'
+                    
+                    days = format_days(year, month, args.days)
+                                        
+                    os.makedirs(var_dir, exist_ok=True)
+                    
+                    if not args.force_overwrite:    
+                        # Don't overwrite existing data 
                         
-                        print(f'** Fetching month={month}', flush=True)
-                        
-                        padded_month =f'{int(month):02d}'
-                        
-                        days = format_days(year, month, args.days)
-                                            
-                        os.makedirs(var_dir, exist_ok=True)
-                        
-                        if not args.force_overwrite:    
-                            # Don't overwrite existing data 
-                            
-                            days = [d for d in days if not os.path.exists(os.path.join(var_dir, f'era5_{var}_{year}{padded_month}{d}.nc'))]
-                        
-                        if len(days)> 0:
-                            retrieve_data(year=year,
-                                        month=padded_month,
-                                        days=days,
-                                        var=var,
-                                        pressure_level=pressure_levels,
-                                        output_resolution=args.resolution,
-                                        output_dir=var_dir)
-                            
-                # Save dataarray in day chunks
-                da= ds[list(ds.data_vars)[0]]
-                save_array_to_separate_days(output_dir=var_dir, da=da, var_name=var)
+                        days = [d for d in days if not os.path.exists(os.path.join(var_dir, f'era5_{var}_{year}{padded_month}{d}.nc'))]
+                    
+                    if len(days)> 0:
+                        ds = retrieve_data(year=year,
+                                    month=padded_month,
+                                    days=days,
+                                    var=var,
+                                    pressure_level=pressure_levels,
+                                    output_resolution=args.resolution,
+                                    output_dir=var_dir)
+
+                        da = ds[list(ds.data_vars)[0]]
+                        save_array_to_separate_days(output_dir=var_dir, da=da, var_name=var)
 
         
