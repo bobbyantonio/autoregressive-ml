@@ -1,10 +1,13 @@
 import sys, os
 import unittest
+import yaml
 from tqdm import tqdm
 import datetime
+import tempfile
 import numpy as np
 import xarray as xr
 import pandas as pd
+from glob import glob
 from pathlib import Path
 
 from unittest.mock import patch
@@ -16,9 +19,17 @@ DATA_FOLDER_LOWRES = '/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5_1deg
 
 sys.path.append(str(HOME))
 
-def mock_cds_api_client_retrieve(type, request, fp):
+
+def mock_cds_api_client_retrieve_surface(type, request, fp):
     
     ds = xr.load_dataset(os.path.join(DATA_FOLDER, 'surface/total_precipitation/2016/era5_total_precipitation_20160101.nc'))
+    
+    ds.to_netcdf(fp, compute=True)
+    return
+
+def mock_cds_api_client_retrieve_plevel(type, request, fp):
+    
+    ds = xr.load_dataset(os.path.join(DATA_FOLDER, 'plevels/temperature/2016/era5_temperature_20160101.nc')).sel(level=[1000,850])
     
     ds.to_netcdf(fp, compute=True)
     return
@@ -227,19 +238,50 @@ class TestLoad(unittest.TestCase):
         for v in ds.data_vars:
             self.assertFalse(np.any(np.isnan(ds[v].values)))
     
-    @patch.object(fetch_era5.cds_api_client, 'retrieve', mock_cds_api_client_retrieve) 
-    def test_fetch_era5(self):
-        
-        fetch_era5.retrieve_data(year=2016, 
-                    output_prefix='surface',
-                    var='2m_temperature',
-                    months=[1],
-                    days=[1],
-                    pressure_level=None,
-                    output_resolution=1.0
-                    )
-        
-        
+    @patch.object(fetch_era5.cds_api_client, 'retrieve', mock_cds_api_client_retrieve_surface) 
+    def test_fetch_era5_surface(self):
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            fetch_era5.retrieve_data(year=2016, 
+                        output_dir=tmpdirname,
+                        var='2m_temperature',
+                        month=1,
+                        days=[1],
+                        pressure_level=None,
+                        output_resolution=0.25
+                        )
+            outfiles = glob(tmpdirname + '/*')
+            self.assertGreater(len(outfiles), 0)
+            self.assertTrue(all([(item.endswith('.npz') or item.endswith('.yml')) for item in outfiles]))
 
+            # Check metadata file
+            with open([item for item in outfiles if item.endswith('.yml')][0], 'r') as f:
+                metadata = yaml.safe_load(f)
+            self.assertEqual(sorted(metadata.keys()), ['lat_step_size', 'lon_step_size', 'max_lat', 'max_lon', 'min_lat', 'min_lon', 'pressure_levels'])
+            self.assertListEqual(metadata['pressure_levels'], [])
+
+    
+    @patch.object(fetch_era5.cds_api_client, 'retrieve', mock_cds_api_client_retrieve_plevel) 
+    def test_fetch_era5_plevel(self):
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            fetch_era5.retrieve_data(year=2016, 
+                        output_dir=tmpdirname,
+                        var='temperature',
+                        month=1,
+                        days=[1],
+                        pressure_level=[1000,850],
+                        output_resolution=0.25
+                        )
+            outfiles = glob(tmpdirname + '/*')
+            self.assertGreater(len(outfiles), 0)
+            self.assertTrue(all([(item.endswith('.npz') or item.endswith('.yml')) for item in outfiles]))
+
+            # Check metadata file
+            with open([item for item in outfiles if item.endswith('.yml')][0], 'r') as f:
+                metadata = yaml.safe_load(f)
+            self.assertEqual(sorted(metadata.keys()), ['lat_step_size', 'lon_step_size', 'max_lat', 'max_lon', 'min_lat', 'min_lon', 'pressure_levels'])
+
+            self.assertListEqual(metadata['pressure_levels'], ['1000', '850'])
+
+            
 if __name__ == '__main__':
     unittest.main()

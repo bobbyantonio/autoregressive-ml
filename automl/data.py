@@ -24,6 +24,8 @@ ERA5_SEA_VARS = ['sea_surface_temperature']
 ERA5_VARNAME_LOOKUP = {'total_precipitation_6hr': 'total_precipitation',
                        'geopotential_at_surface': 'geopotential'}
 
+
+
 REGRIDDING_STRATEGY = {'total_precipitation': 'conservative',
                        'total_precipitation_6hr': 'bilinear'}
 
@@ -133,6 +135,25 @@ def ns_to_hr(ns_val: float):
 def _preprocess_sel_levels(x: xr.Dataset, levels: list):
     return x.sel(level=levels)
 
+def open_large_dataset(fps: list[str],
+                       datetimes: list,
+                       pressure_levels: list[int]=None
+                       ):
+    if pressure_levels is not None:
+        if isinstance(pressure_levels , tuple):
+                pressure_levels = list(pressure_levels)
+        preprocess_func = partial(_preprocess_sel_levels, levels=pressure_levels)
+    else:
+        preprocess_func = None
+
+    # Need to preprocess to select levels, otherwise this function has trouble combining them
+    with dask.config.set(**{'array.slicing.split_large_chunks': True}):
+        ds = xr.open_mfdataset(fps, preprocess=preprocess_func)
+        ds = ds.sel(time=datetimes)
+    
+    return ds
+    
+    
 
 def load_era5(var: str,
             datetimes: list,
@@ -162,15 +183,14 @@ def load_era5(var: str,
     
 
     if pressure_levels is None:
-        preprocess_func = None
+
         if var not in ERA5_SURFACE_VARS + ERA5_STATIC_VARS + ERA5_SEA_VARS:
             raise ValueError(f'Variable {var} not found in possible surface variable names')
         data_category = 'surface'
     else:
-        preprocess_func = None
+
         if isinstance(pressure_levels , tuple):
             pressure_levels = list(pressure_levels)
-        preprocess_func = partial(_preprocess_sel_levels, levels=pressure_levels)
         
         if var not in ERA5_PLEVEL_VARS:
             raise ValueError(f'Variable {var} not found in possible atmospheric variable names')
@@ -190,14 +210,12 @@ def load_era5(var: str,
         datetimes = sorted(set(list(datetimes) + extra_datetimes))
     
     era5_var_name = ERA5_VARNAME_LOOKUP.get(var, var)
-        
+
     fps = sorted(set([os.path.join(era_data_dir, data_category, era5_var_name, f"{item.strftime('%Y')}/era5_{era5_var_name}_{item.strftime('%Y%m%d')}.nc") for item in datetimes]))
     
-    # Need to preprocess to select levels, otherwise this function has trouble combining them
-    with dask.config.set(**{'array.slicing.split_large_chunks': True}):
-        da = xr.open_mfdataset(fps, preprocess=preprocess_func)
-        da = da.sel(time=datetimes)[list(da.data_vars)[0]]
-    
+    da = open_large_dataset(fps=fps, pressure_levels=pressure_levels, datetimes=datetimes)
+    da = da[list(da.data_vars)[0]]
+
     # If not in correct output resolution, then regrid
     # Here we assume that resolution is uniform, and that resolution doesn't go below the 4th decimal place
     lat_var_name, _ = get_lat_lon_names(da)
@@ -305,7 +323,7 @@ def load_era5_plevel(year: int,
                      pressure_levels: list=gc.PRESSURE_LEVELS_ERA5_37,
                      era5_data_dir: str=HI_RES_ERA5_DIR, 
                      vars: list=ERA5_PLEVEL_VARS,
-                      low_res_vars: list=None):
+                     low_res_vars: list=None):
     
     if not isinstance(vars, list) and not isinstance(vars, tuple):
         vars = [vars]
@@ -322,7 +340,7 @@ def load_era5_plevel(year: int,
         tmp_data_dir = HI_RES_ERA5_DIR
         if low_res_vars is not None:
             if var in low_res_vars:
-                tmp_data_dir = LOW_RES_ERA5_DIR               
+                tmp_data_dir = LOW_RES_ERA5_DIR            
         
         tmp_da = load_era5(var, time_sel, era_data_dir=tmp_data_dir,
                         pressure_levels=pressure_levels
