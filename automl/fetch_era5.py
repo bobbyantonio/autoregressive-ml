@@ -116,16 +116,19 @@ def save_array_to_separate_days(output_dir, da, var_name):
 
         # utils.write_to_yaml(fpath=output_fp.replace('.nc', '.yml'), data=metadata_dict)
 
-def retrieve_data(year:int, 
+def retrieve_data(years: list, 
                     output_dir:str,
                     var:str,
-                    month:int,
+                    months:list,
                     days:Iterable=range(1,32),
                     pressure_level=None,
-                    output_resolution: float=None
+                    output_resolution: float=0.25
                     ):
     
     output_prefix=os.path.join(output_dir, f'era5_{var}_{year}{int(month):02d}')
+    months = [f'{int(month):02d}' for month in months]
+    days = format_days(year, month, args.days)
+    years = [str(year) for year in years]
 
     if var=='total_precipitation':
         # Collect full history for precip since it needs to be aggregated (the others are subsamples)
@@ -137,12 +140,12 @@ def retrieve_data(year:int,
             'product_type': 'reanalysis',
             'format': 'netcdf',
             'variable': var,
-            'year': str(year),
-            'month': str(month),
-            'day': [f'{int(day):02d}' for day in days],
+            'year': years,
+            'month': months,
+            'day': days,
             'time': time,
+            'grid': [output_resolution, output_resolution]
         }
-
     
     if pressure_level is not None:
         if not isinstance(pressure_level, tuple) and not isinstance(pressure_level, list):
@@ -154,15 +157,6 @@ def retrieve_data(year:int,
         cds_api_client.retrieve(
             'reanalysis-era5-single-levels' if pressure_level is None else 'reanalysis-era5-pressure-levels', 
             request, fp.name)
-        
-        if output_resolution is not None and output_resolution != 0.25:
-            ds = xr.load_dataset(fp.name)
-            ds = data.interpolate_dataset_on_lat_lon(ds, 
-                                   latitude_vals=np.arange(-90, 90, output_resolution) , 
-                                   longitude_vals=np.arange(0,360,output_resolution),
-                                   interp_method ='conservative')
-            ds.to_netcdf(fp.name + 'regridded')
-            output_prefix += f'_{output_resolution}deg'
 
         ds = xr.open_dataset(fp.name)
     return ds
@@ -225,71 +219,62 @@ if __name__ == '__main__':
             raise ValueError(f'Unrecognised variable {var}')
         
         era5_var_name = data.ERA5_VARNAME_LOOKUP.get(var, var)
-        
-        for year in args.years:
-            print(f'** Fetching year={year}', flush=True)
 
-            var_dir = os.path.join(args.output_dir, data_category, var, str(year))
+        for month in args.months:
+            # loop by month first since Copernicus doesn't allow you to submit a request with 31st Feb, and this way
+            # means less waiting time.
+            
+            print(f'** Fetching month={month}', flush=True)
 
-            # First check that this data isn't already in the AOPP data; if so then just copy from there
-            short_era5_name = ERA5_SHORT_NAME_LOOKUP[data_category].get(era5_var_name)
+            var_dir = os.path.join(args.output_dir, data_category, var)
 
-            if short_era5_name is not None: # Short names only provided where there is some data for that variable
-
-                existing_fp = os.path.join(AOPP_ERA5_DIR, f'{short_era5_name}/1hr/{short_era5_name}_1hr_ERA5_{args.resolution}x{args.resolution}_{year}01-{year}12.nc')
-                if os.path.exists(existing_fp):
-
-                    if var=='total_precipitation':
-                        # Collect full history for precip since it needs to be aggregated (the others are subsamples)
-                        hours = range(24)
-                    else:
-                        hours = [0,6,12,18]
-
-                    datetimes_to_save = []
-                    for month in args.months:
-                        days = format_days(year, month, args.days)
-                        datetimes_to_save += [datetime.datetime(year=int(year), month=int(month), day=int(day), hour=h) for day in days for h in hours]
-                    datetimes_to_save = sorted(set(datetimes_to_save))
-
-                    if not args.force_overwrite:
-                        datetimes_to_save = [dt for dt in datetimes_to_save if not os.path.exists(os.path.join(var_dir, f'era5_{var}_{year}{dt.month:02d}{dt.day:02d}.nc'))]
-
-                    ds = xr.open_dataset(existing_fp)
-                    ds = ds.sel(time=datetimes_to_save)
-
-                    if pressure_levels is not None:
-                        ds = ds.sel(level=pressure_levels)
-
-                    da = ds[list(ds.data_vars)[0]]
-                    save_array_to_separate_days(output_dir=var_dir, da=da, var_name=var)
-
+            if var=='total_precipitation':
+                # Collect full history for precip since it needs to be aggregated (the others are subsamples)
+                hours = range(24)
             else:
+                hours = [0,6,12,18]
 
-                for month in args.months:
+            datetimes_to_save = []
+            for year in args.years:
+                days = format_days(year=year, month=month, days=args.days)
+                
+                datetimes_to_save += [datetime.datetime(year=int(year), month=int(month), day=int(day), hour=h) for day in days for h in hours]
+            datetimes_to_save = sorted(set(datetimes_to_save))
+
+            if not args.force_overwrite:
+                datetimes_to_save = [dt for dt in datetimes_to_save if not os.path.exists(os.path.join(var_dir, f'era5_{var}_{year}{dt.month:02d}{dt.day:02d}.nc'))]
+
+            years_to_save = sorted(set([dt.year for dt in datetimes_to_save]))
+            days_to_save = sorted(set(dt.day for dt in datetimes_to_save))
+
+            if len(datetimes_to_save) > 0:
+                for year in years_to_save:
+                    # First check that this data isn't already in the AOPP data; if so then just copy from there
+                    short_era5_name = ERA5_SHORT_NAME_LOOKUP[data_category].get(era5_var_name)
+
+                    existing_fp = os.path.join(AOPP_ERA5_DIR, f'{short_era5_name}/1hr/{short_era5_name}_1hr_ERA5_{args.resolution}x{args.resolution}_{year}01-{year}12.nc')
                     
-                    print(f'** Fetching month={month}', flush=True)
-                    
-                    padded_month =f'{int(month):02d}'
-                    
-                    days = format_days(year, month, args.days)
-                                        
-                    os.makedirs(var_dir, exist_ok=True)
-                    
-                    if not args.force_overwrite:    
-                        # Don't overwrite existing data 
-                        
-                        days = [d for d in days if not os.path.exists(os.path.join(var_dir, f'era5_{var}_{year}{padded_month}{d}.nc'))]
-                    
-                    if len(days)> 0:
-                        ds = retrieve_data(year=year,
-                                    month=padded_month,
-                                    days=days,
+                    if os.path.exists(existing_fp):
+
+                        ds = xr.open_dataset(existing_fp)
+                        ds = ds.sel(time=[dt for dt in datetimes_to_save if dt.year ==year])
+
+                        if pressure_levels is not None:
+                            ds = ds.sel(level=pressure_levels)
+                        da = ds[list(ds.data_vars)[0]]
+                        save_array_to_separate_days(output_dir=var_dir, da=da, var_name=var)
+
+                else:
+
+                    # if var in SURFACE_VARS:
+                    # Quicker to download it all at once
+                    ds = retrieve_data(years=years_to_save,
+                                    months=[month],
+                                    days=days_to_save,
                                     var=var,
                                     pressure_level=pressure_levels,
                                     output_resolution=args.resolution,
                                     output_dir=var_dir)
 
-                        da = ds[list(ds.data_vars)[0]]
-                        save_array_to_separate_days(output_dir=var_dir, da=da, var_name=var)
-
-        
+                    da = ds[list(ds.data_vars)[0]]
+                    save_array_to_separate_days(output_dir=var_dir, da=da, var_name=var)

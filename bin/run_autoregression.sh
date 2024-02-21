@@ -50,7 +50,6 @@ do
     echo "Evaluating $lowresvar as low res"
     for month in 1 7
     do
-
-        python -m automl.autoregression --output-dir /network/group/aopp/predict/HMC005_ANTONIO_EERIE/predictions/low_res_${lowresvar} --num-steps 40 --year 2016 --month ${month} --day 1 --hour-start 18 
+        python -m automl.autoregression --output-dir /network/group/aopp/predict/HMC005_ANTONIO_EERIE/predictions/low_res_${lowresvar} --num-steps 40 --year 2016 --month ${month} --day 1 --hour-start 18 --low-res-var ${lowresvar}
     done
 done

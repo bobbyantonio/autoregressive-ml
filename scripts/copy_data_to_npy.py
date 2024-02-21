@@ -49,8 +49,6 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--output-dir', type=str, required=True,
                         help="Folder to save data to")
-    parser.add_argument('--years', nargs='+', required=True,
-                        help='Year(s) to collect data for')
     parser.add_argument('--data-config-path', type=str, required=True)
     parser.add_argument('--debug',action='store_true')
     args = parser.parse_args()
@@ -58,34 +56,44 @@ if __name__ == '__main__':
     path_split = os.path.split(args.data_config_path)
     data_config = read_config.read_data_config(config_filename=path_split[-1],
                                                 config_folder=path_split[0])
-        
-    for y in args.years:
-        for month in tqdm(range(1,13)):
 
-            all_datetimes = list(pd.date_range(start=datetime.datetime(int(y), month, 1), 
-                                                end=datetime.datetime(int(y), month, monthrange(int(y), month)[1]), freq='6h'))
-            
-            for var in data_config.input_atmospheric_fields:
+    years_dict = {'train': data_config.train_years,
+                  'validation': data_config.validation_years,
+                  'test': data_config.test_years}
+    
+    data_type_dict = {'sur'}
 
-                output_type = np.float16 if var in data_config.float16_fields else np.float32
-                print(var)
-                da = data.load_era5(var=var, datetimes=all_datetimes, era_data_dir=data_config.paths['ERA5'],
-                                    pressure_levels=data_config.pressure_levels).compute()
+    for data_label, years in years_dict.items():
+        print(f'Writing {data_label} data')
 
-                output_dir = os.path.join(args.output_dir, 'plevels', var, y, str(month))
 
-                os.makedirs(output_dir, exist_ok=True)
+        for y in years:
+            for month in tqdm(range(1,13)):
 
-                save_array_to_separate_hours(var_name=var, output_dir=output_dir, da=da, output_type=output_type)
-            
-            # for var in data_config.input_surface_fields:
+                all_datetimes = list(pd.date_range(start=datetime.datetime(int(y), month, 1), 
+                                                    end=datetime.datetime(int(y), month, monthrange(int(y), month)[1]), freq='6h'))
+                
+                for var in data_config.input_atmospheric_fields:
 
-            #     output_type = np.float16 if var in data_config.float16_fields else np.float32
-            #     print(var)
-            #     da = data.load_era5(var=var, datetimes=all_datetimes, era_data_dir=data_config.paths['ERA5']).compute()
+                    output_type = np.float16 if var in data_config.float16_fields else np.float32
+                    print(var)
+                    da = data.load_era5(var=var, datetimes=all_datetimes, era_data_dir=data_config.paths['ERA5'],
+                                        pressure_levels=data_config.pressure_levels).compute()
 
-            #     output_dir = os.path.join(args.output_dir, 'surface', var, y, str(month))
+                    output_dir = os.path.join(args.output_dir, f'{data_label}/plevels/{var}/{y}/{month}')
 
-            #     os.makedirs(output_dir, exist_ok=True)
+                    os.makedirs(output_dir, exist_ok=True)
 
-            #     save_array_to_separate_hours(var_name=var, output_dir=output_dir, da=da, output_type=output_type)
+                    save_array_to_separate_hours(var_name=var, output_dir=output_dir, da=da, output_type=output_type)
+                
+                # for var in data_config.input_surface_fields:
+
+                #     output_type = np.float16 if var in data_config.float16_fields else np.float32
+                #     print(var)
+                #     da = data.load_era5(var=var, datetimes=all_datetimes, era_data_dir=data_config.paths['ERA5']).compute()
+
+                #     output_dir = os.path.join(args.output_dir, data_label, 'surface', var, y, str(month))
+
+                #     os.makedirs(output_dir, exist_ok=True)
+
+                #     save_array_to_separate_hours(var_name=var, output_dir=output_dir, da=da, output_type=output_type)

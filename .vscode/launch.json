@@ -10,8 +10,7 @@
             "request": "launch",
             "module": "automl.fetch_era5",
             "justMyCode": true,
-            "args": ["--year", "2016", "--output-dir", "/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5", 
-            "--vars", "specific_humidity", "--pressure-level", "1000", "850", "--month", "7"]
+            "args": ["--years","2011","2012","2013","2014","2015","--output-dir","/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5","--surface"]
         },
         {
             "name": "fetch_era5_surf",
@@ -38,6 +37,22 @@
             "module": "scripts.regrid_data",
             "justMyCode": false,
             "args": ["--years", "2016", "--output-dir", "/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5_1deg", "--months", "2", "--resolution", "1"]
+        },
+        {
+            "name": "calculate norms",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "scripts.calculate_normalisation_data",
+            "justMyCode": false,
+            "args": ["--data-config-path", "/home/a/antonio/repos/autoregressive-ml/config/data_config.yaml"]
+        },
+        {
+            "name": "copy to npy",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "scripts.copy_data_to_npy",
+            "justMyCode": false,
+            "args": ["--data-config-path", "/home/a/antonio/repos/autoregressive-ml/config/data_config.yaml",  "--output-dir", "/network/group/aopp/predict/HMC005_ANTONIO_EERIE/ml_data"]
         }
     ]
 }

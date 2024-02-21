@@ -36,7 +36,7 @@ def mock_cds_api_client_retrieve_plevel(type, request, fp):
 
 from automl import data, fetch_era5
     
-class TestLoad(unittest.TestCase):
+class TestData(unittest.TestCase):
     
     def test_load_era5(self):
 
