@@ -41,7 +41,10 @@ ERA5_SEA_VARS = ('sea_surface_temperature',)
 ERA5_VARNAME_LOOKUP = {'total_precipitation_6hr': 'total_precipitation',
                        'geopotential_at_surface': 'geopotential'}
 
-
+PRESSURE_LEVELS_ERA5_37 = (
+    1, 2, 3, 5, 7, 10, 20, 30, 50, 70, 100, 125, 150, 175, 200, 225, 250, 300,
+    350, 400, 450, 500, 550, 600, 650, 700, 750, 775, 800, 825, 850, 875, 900,
+    925, 950, 975, 1000)
 
 REGRIDDING_STRATEGY = {'total_precipitation': 'conservative',
                        'total_precipitation_6hr': 'bilinear'}
@@ -200,21 +203,16 @@ def load_era5(var: str,
     Returns:
         _type_: _description_
     """
-    
-
-    if pressure_levels is None:
-
-        if var not in ERA5_SURFACE_VARS + ERA5_STATIC_VARS + ERA5_SEA_VARS:
-            raise ValueError(f'Variable {var} not found in possible surface variable names')
+    if var in ERA5_SURFACE_VARS + ERA5_STATIC_VARS + ERA5_SEA_VARS:
         data_category = 'surface'
-    else:
-
-        if isinstance(pressure_levels , tuple):
-            pressure_levels = list(pressure_levels)
-        
-        if var not in ERA5_PLEVEL_VARS:
-            raise ValueError(f'Variable {var} not found in possible atmospheric variable names')
+    elif var in ERA5_PLEVEL_VARS:
         data_category = 'plevels'
+    else:
+        raise ValueError(f'Variable {var} not found in possible variable names')
+
+
+    if pressure_levels is not None and data_category == 'surface':
+        pressure_levels = None        
         
     if isinstance(pressure_levels , tuple):
         pressure_levels = list(pressure_levels)

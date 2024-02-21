@@ -1,5 +1,6 @@
 # Aim of this script: to save easily loaded copies of the training/test data
 import os, sys
+import git
 import datetime
 from pathlib import Path
 import numpy as np
@@ -27,7 +28,13 @@ def save_array_to_separate_hours(output_dir, da, var_name, output_type):
         tmp_da = data.format_dataarray(tmp_da).drop_vars('time')
 
         output_fp = os.path.join(output_dir, f"era5_{var_name}_{tmp_time.strftime('%Y%m%d_%H')}.npy")
-        np.save(output_fp, tmp_da.values.astype(output_type))
+        typed_values = tmp_da.values.astype(output_type)
+
+        # Check for numerical over/under flow
+        if np.isinf(typed_values).any():
+            raise TypeError(f'Precision mismatch for var {var_name}')
+
+        np.save(output_fp, )
 
         lat_vals = tmp_da[lat_var_name].values
         lon_vals = tmp_da[lon_var_name].values
@@ -60,8 +67,6 @@ if __name__ == '__main__':
     years_dict = {'train': data_config.train_years,
                   'validation': data_config.validation_years,
                   'test': data_config.test_years}
-    
-    data_type_dict = {'sur'}
 
     for data_label, years in years_dict.items():
         print(f'Writing {data_label} data')
@@ -73,27 +78,26 @@ if __name__ == '__main__':
                 all_datetimes = list(pd.date_range(start=datetime.datetime(int(y), month, 1), 
                                                     end=datetime.datetime(int(y), month, monthrange(int(y), month)[1]), freq='6h'))
                 
-                for var in data_config.input_atmospheric_fields:
+
+                vars = data_config.input_surface_fields
+
+                for var in vars:
 
                     output_type = np.float16 if var in data_config.float16_fields else np.float32
-                    print(var)
+
                     da = data.load_era5(var=var, datetimes=all_datetimes, era_data_dir=data_config.paths['ERA5'],
                                         pressure_levels=data_config.pressure_levels).compute()
 
-                    output_dir = os.path.join(args.output_dir, f'{data_label}/plevels/{var}/{y}/{month}')
+                    output_dir = os.path.join(args.output_dir, f'{data_label}/{var}')
 
                     os.makedirs(output_dir, exist_ok=True)
 
                     save_array_to_separate_hours(var_name=var, output_dir=output_dir, da=da, output_type=output_type)
                 
-                # for var in data_config.input_surface_fields:
+    # Finally write data config and git commit to folder
+    repo = git.Repo(search_parent_directories=True)
+    sha = repo.head.object.hexsha
+    with open(os.path.join(args.output_dir, 'git_commit.txt'), 'w+') as ofh:
+        ofh.write(sha)
 
-                #     output_type = np.float16 if var in data_config.float16_fields else np.float32
-                #     print(var)
-                #     da = data.load_era5(var=var, datetimes=all_datetimes, era_data_dir=data_config.paths['ERA5']).compute()
-
-                #     output_dir = os.path.join(args.output_dir, data_label, 'surface', var, y, str(month))
-
-                #     os.makedirs(output_dir, exist_ok=True)
-
-                #     save_array_to_separate_hours(var_name=var, output_dir=output_dir, da=da, output_type=output_type)
+    utils.write_to_yaml(os.path.join(args.output_dir, 'data_config.yaml'), utils.convert_namespace_to_dict(data_config))

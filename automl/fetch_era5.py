@@ -20,11 +20,6 @@ sys.path.append( str(HOME))
 from automl import data
 from automl.utils import utils
 
-PRESSURE_LEVELS_ERA5_37 = (
-    1, 2, 3, 5, 7, 10, 20, 30, 50, 70, 100, 125, 150, 175, 200, 225, 250, 300,
-    350, 400, 450, 500, 550, 600, 650, 700, 750, 775, 800, 825, 850, 875, 900,
-    925, 950, 975, 1000)
-
 
 SURFACE_VARS =  (
                 '10m_u_component_of_wind', '10m_v_component_of_wind', '2m_temperature',
@@ -211,7 +206,7 @@ if __name__ == '__main__':
 
             data_category = 'plevels'
             if args.pressure_levels is None:
-                pressure_levels = PRESSURE_LEVELS_ERA5_37
+                pressure_levels = data.PRESSURE_LEVELS_ERA5_37
             else:
                 pressure_levels = args.pressure_levels
         
