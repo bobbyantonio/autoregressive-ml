@@ -1,0 +1,51 @@
+normalisation_years: 
+    - 2015
+num_samples: 320000
+latitude_step_size: 0.25
+longitude_step_size: 0.25
+pressure_levels:
+    - 1000
+input_fields: 
+    - 2m_temperature
+    - mean_sea_level_pressure
+    - 10m_v_component_of_wind
+    - 10m_u_component_of_wind
+    - total_precipitation_6hr
+    - toa_incident_solar_radiation
+    - temperature
+    - geopotential
+    - u_component_of_wind
+    - v_component_of_wind
+    - vertical_velocity
+    - specific_humidity
+    - land_sea_mask
+    - geopotential_at_surface
+target_fields:
+    - 2m_temperature
+float16_fields:
+    - 2m_temperature
+    - 10m_v_component_of_wind
+    - 10m_u_component_of_wind
+    - total_precipitation_6hr
+    - temperature
+    - geopotential
+    - u_component_of_wind
+    - v_component_of_wind
+    - vertical_velocity
+    - specific_humidity
+    - land_sea_mask
+    - geopotential_at_surface
+train_years:
+    - 2011
+    - 2012
+    - 2013
+    - 2014
+validation_years:
+    - 2015
+test_years:
+    - 2016
+normalisation_strategy:
+paths:
+  ERA5: '/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5'
+  ERA5_AOPP: '/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5'
+  ERA5_LOWRES: '/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5_1deg/bilinear'

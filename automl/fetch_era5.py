@@ -261,15 +261,28 @@ if __name__ == '__main__':
 
                 else:
 
-                    # if var in SURFACE_VARS:
-                    # Quicker to download it all at once
-                    ds = retrieve_data(years=years_to_save,
-                                    months=[month],
-                                    days=days_to_save,
-                                    var=var,
-                                    pressure_level=pressure_levels,
-                                    output_resolution=args.resolution,
-                                    output_dir=var_dir)
+                    if var in SURFACE_VARS:
+                        # Quicker to download it all at once
+                        ds = retrieve_data(years=years_to_save,
+                                        months=[month],
+                                        days=days_to_save,
+                                        var=var,
+                                        pressure_level=pressure_levels,
+                                        output_resolution=args.resolution,
+                                        output_dir=var_dir)
 
-                    da = ds[list(ds.data_vars)[0]]
-                    save_array_to_separate_days(output_dir=var_dir, da=da, var_name=var)
+                        da = ds[list(ds.data_vars)[0]]
+                        save_array_to_separate_days(output_dir=var_dir, da=da, var_name=var)
+                    else:
+                        for y in years_to_save:
+                            # Quicker to download it all at once
+                            ds = retrieve_data(years=[y],
+                                            months=[month],
+                                            days=days_to_save,
+                                            var=var,
+                                            pressure_level=pressure_levels,
+                                            output_resolution=args.resolution,
+                                            output_dir=var_dir)
+
+                            da = ds[list(ds.data_vars)[0]]
+                            save_array_to_separate_days(output_dir=var_dir, da=da, var_name=var)
