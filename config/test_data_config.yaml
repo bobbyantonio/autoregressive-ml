@@ -10,6 +10,7 @@ input_fields:
     - 2m_temperature
     - total_precipitation_6hr
     - land_sea_mask
+    - temperature
 target_fields:
     - 2m_temperature
 float16_fields:

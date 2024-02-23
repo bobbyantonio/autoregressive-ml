@@ -31,7 +31,8 @@ def load_data_by_datetime(dt: datetime.datetime,
     arrs = {}
     input_dts = {'input_t0': {'datetime': dt, 'fields': data_config.input_fields}, 
                 'input_tm6h': {'datetime': dt - datetime.timedelta(hours=6), 'fields': data_config.input_fields},
-                'targets': {'datetime': dt + datetime.timedelta(hours=6), 'fields': data_config.target_fields}}
+                'targets': {'datetime': dt + datetime.timedelta(hours=6), 'fields': data_config.target_fields},
+                'targets_refs': {'datetime': dt, 'fields': data_config.target_fields}} # reference data for calculating residuals
 
     for datatype, tmp_dict in input_dts.items():
         
@@ -63,9 +64,9 @@ def load_data_by_datetime(dt: datetime.datetime,
         arrs[datatype] = np.concatenate(arrs[datatype])
 
     inputs = {k: v for k, v in arrs.items() if k.startswith('input')}
-    targets = arrs['targets']
+    target_residuals = arrs['targets'] -  arrs['targets_refs']
 
-    return inputs, targets
+    return inputs, target_residuals
 
 if __name__ == '__main__':
     
