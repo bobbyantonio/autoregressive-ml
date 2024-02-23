@@ -2,6 +2,7 @@
 import os, sys
 import git
 import datetime
+import torch
 from types import SimpleNamespace
 from pathlib import Path
 import numpy as np
@@ -9,6 +10,7 @@ import pandas as pd
 from tqdm import tqdm
 from calendar import monthrange
 from argparse import ArgumentParser
+import warnings
 
 import numpy as np
 from automl.utils import read_config, utils
@@ -29,7 +31,7 @@ def load_data_by_datetime(dt: datetime.datetime,
     arrs = {}
     input_dts = {'input_t0': {'datetime': dt, 'fields': data_config.input_fields}, 
                 'input_tm6h': {'datetime': dt - datetime.timedelta(hours=6), 'fields': data_config.input_fields},
-                'target': {'datetime': dt + datetime.timedelta(hours=6), 'fields': data_config.target_fields}}
+                'targets': {'datetime': dt + datetime.timedelta(hours=6), 'fields': data_config.target_fields}}
 
     for datatype, tmp_dict in input_dts.items():
         
@@ -61,7 +63,7 @@ def load_data_by_datetime(dt: datetime.datetime,
         arrs[datatype] = np.concatenate(arrs[datatype])
 
     inputs = {k: v for k, v in arrs.items() if k.startswith('input')}
-    targets = arrs['target']
+    targets = arrs['targets']
 
     return inputs, targets
 
@@ -89,36 +91,46 @@ if __name__ == '__main__':
 
 
         for y in years:
+            print(f'year = {y}')
             for month in tqdm(range(1,13)):
+                print(f'Month = {month}')
 
                 all_input_datetimes = list(pd.date_range(start=datetime.datetime(int(y), month, 1), 
                                                     end=datetime.datetime(int(y), month, monthrange(int(y), month)[1]), freq='6h'))
 
-                for dt in all_input_datetimes:
+                for dt in tqdm(all_input_datetimes):
                     
                     # Exclude datapoints at extreme ends of year, to avoid mixing with other datasets
                     # (Assumes that data is split by year)
                     if (dt - datetime.timedelta(hours=6)).year != y or (dt + datetime.timedelta(hours=6)).year != y:
                         continue
 
-                    inputs, targets = load_data_by_datetime(dt=dt, variables=data_config.input_fields)
+                    inputs, targets = load_data_by_datetime(dt=dt, data_config=data_config)
                         
                     #####################
                     # Save data and metadata
                     output_dir = os.path.join(data_config.paths['ml_data'], data_label)
-                    output_fp = os.path.join(output_dir, f"era5_{dt.strftime('%Y%m%d_%H')}.npz")
+                    inputs_fp = os.path.join(output_dir, f"inputs_era5_{dt.strftime('%Y%m%d_%H')}.pt")
+                    targets_fp = os.path.join(output_dir, f"targets_era5_{dt.strftime('%Y%m%d_%H')}.pt")
                     os.makedirs(output_dir, exist_ok=True)
 
       
-                    # TODO: loading from .npy files is faster, but then we need to store multiple arrays for every training step
-                    # Perhaps there is a quicker way to load data
-                    np.savez(output_fp, {'inputs': inputs, 'targets': targets})
+                    # TODO: saving a concatenated np array to a .npy file is faster than this
+                    # but I expect there to be advantages of the torch loading function for ML applications.
+                    # Something to experiment with if IO is slow, but order of ms so probably not a big deal
+                    with warnings.catch_warnings():
+                        warnings.filterwarnings('ignore', category=UserWarning) # To filter out PyTorch user warning
+                        input_tensor = torch.tensor([inputs['input_t0'], inputs['input_tm6h']])
+                        target_tensor = torch.tensor(targets)
+
+                    torch.save(input_tensor, inputs_fp)
+                    torch.save(target_tensor, targets_fp)
 
                     # Save metadata alongside
                     metadata_dict = {'vars': vars,
                                     'pressure_levels': sorted(data_config.pressure_levels)}
 
-                    utils.write_to_yaml(fpath=output_fp.replace('.npz', '.yml'), data=metadata_dict)
+                    utils.write_to_yaml(fpath=inputs_fp.replace('.pt', '.yml').replace('inputs', 'metadata'), data=metadata_dict)
                 
     # Finally write data config and git commit to folder
     repo = git.Repo(search_parent_directories=True)

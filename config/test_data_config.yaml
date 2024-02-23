@@ -32,6 +32,7 @@ validation_years:
 normalisation_strategy:
 paths:
   ml_data: '/network/group/aopp/predict/HMC005_ANTONIO_EERIE/ml_data'
+  ERA5_stats: '/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5_stats'
   ERA5: '/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5'
   ERA5_AOPP: '/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5'
   ERA5_LOWRES: '/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5_1deg/bilinear'

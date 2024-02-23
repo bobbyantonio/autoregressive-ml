@@ -47,12 +47,12 @@
             "args": ["--data-config-path", "/home/a/antonio/repos/autoregressive-ml/config/data_config.yaml"]
         },
         {
-            "name": "copy to npy",
+            "name": "create ml data",
             "type": "debugpy",
             "request": "launch",
-            "module": "scripts.copy_data_to_npy",
+            "module": "scripts.create_ml_data",
             "justMyCode": false,
-            "args": ["--data-config-path", "/home/a/antonio/repos/autoregressive-ml/config/test_data_config.yaml",  "--output-dir", "/network/group/aopp/predict/HMC005_ANTONIO_EERIE/ml_data"]
+            "args": ["--data-config-path", "/home/a/antonio/repos/autoregressive-ml/config/test_data_config.yaml"]
         }
     ]
 }
