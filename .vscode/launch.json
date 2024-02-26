@@ -10,7 +10,7 @@
             "request": "launch",
             "module": "automl.fetch_era5",
             "justMyCode": true,
-            "args": ["--years","2011","2012","2013","2014","2015","--output-dir","/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5","--surface"]
+            "args": ["--years","2012","2013","2014","--output-dir","/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5","--surface"]
         },
         {
             "name": "fetch_era5_surf",

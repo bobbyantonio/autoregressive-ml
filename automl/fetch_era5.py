@@ -21,30 +21,6 @@ from automl import data
 from automl.utils import utils
 
 
-SURFACE_VARS =  (
-                '10m_u_component_of_wind', '10m_v_component_of_wind', '2m_temperature',
-                'geopotential', 'land_sea_mask', 'mean_sea_level_pressure',
-                'toa_incident_solar_radiation', 'total_precipitation', 'sea_surface_temperature'
-)
-
-AOPP_ERA5_DIR = '/network/group/aopp/met_data/MET001_ERA5/data'
-
-
-ERA5_SHORT_NAME_LOOKUP = {'surface': {'2m_temperature': 'tas',
-                                      '10m_u_component_of_wind': 'uas', 
-                                      '10m_v_component_of_wind': 'vas',
-                                      'land_sea_mask': 'lsm',
-                                      'mean_sea_level_pressure': 'psl',
-                                      'toa_incident_solar_radiation': 'rsdt', 
-                                      'total_precipitation': 'pr'},
-                         'plevels': {'geopotential': 'zg',
-                                     'specific_humidity': 'hus',
-                                     'temperature': 'ta',
-                                     'u_component_of_wind': 'ua',
-                                     'v_component_of_wind': 'va'}}
-
-PRESSURE_LEVEL_VARS = data.ERA5_PLEVEL_VARS
-
 cds_api_client = cdsapi.Client()
 
 def format_days(year: str, month:str, days:str):
@@ -184,9 +160,9 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if args.surface:
-        vars = SURFACE_VARS
+        vars = data.ERA5_SURFACE_VARS
     elif args.plevels: 
-        vars = PRESSURE_LEVEL_VARS
+        vars = data.ERA5_PLEVEL_VARS
     elif args.vars:
         vars = args.vars
     else:
@@ -197,12 +173,15 @@ if __name__ == '__main__':
         
         print(f'** Fetching var={var}', flush=True)
 
-        if var in SURFACE_VARS:
+        if var in data.ERA5_STATIC_VARS:
+            continue
+        
+        elif var in data.ERA5_SURFACE_VARS:
                     
             data_category = 'surface'
             pressure_levels=None
 
-        elif var in PRESSURE_LEVEL_VARS:
+        elif var in data.ERA5_PLEVEL_VARS:
 
             data_category = 'plevels'
             if args.pressure_levels is None:
@@ -241,13 +220,16 @@ if __name__ == '__main__':
 
             years_to_save = sorted(set([dt.year for dt in datetimes_to_save]))
             days_to_save = sorted(set(dt.day for dt in datetimes_to_save))
-
+        
             if len(datetimes_to_save) > 0:
+                years_fetched = []
                 for year in years_to_save:
-                    # First check that this data isn't already in the AOPP data; if so then just copy from there
-                    short_era5_name = ERA5_SHORT_NAME_LOOKUP[data_category].get(era5_var_name)
 
-                    existing_fp = os.path.join(AOPP_ERA5_DIR, f'{short_era5_name}/1hr/{short_era5_name}_1hr_ERA5_{args.resolution}x{args.resolution}_{year}01-{year}12.nc')
+                    # First check that this data isn't already in the AOPP data; if so then just copy from there
+                    short_era5_name = data.ERA5_SHORT_NAME_LOOKUP[data_category].get(era5_var_name)
+
+                    existing_fp = os.path.join(data.AOPP_ERA5_DIR, 
+                                               f'{short_era5_name}/1hr/{short_era5_name}_1hr_ERA5_{args.resolution}x{args.resolution}_{year}01-{year}12.nc')
                     
                     if os.path.exists(existing_fp):
 
@@ -259,9 +241,12 @@ if __name__ == '__main__':
                         da = ds[list(ds.data_vars)[0]]
                         save_array_to_separate_days(output_dir=var_dir, da=da, var_name=var)
 
-                else:
-
-                    if var in SURFACE_VARS:
+                        years_fetched.append(year)
+                
+                years_to_save = list(set(years_to_save).difference(years_fetched))
+                # Download any data not already found in AOPP store
+                if len(years_to_save) > 0:
+                    if var in data.ERA5_SURFACE_VARS:
                         # Quicker to download it all at once
                         ds = retrieve_data(years=years_to_save,
                                         months=[month],

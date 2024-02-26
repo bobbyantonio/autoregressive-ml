@@ -20,6 +20,19 @@ LOW_RES_ERA5_DIR = '/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5_1deg/b
 
 SECONDS_IN_DAY = 24*60*60
 
+ERA5_SHORT_NAME_LOOKUP = {'surface': {'2m_temperature': 'tas',
+                                      '10m_u_component_of_wind': 'uas', 
+                                      '10m_v_component_of_wind': 'vas',
+                                      'land_sea_mask': 'lsm',
+                                      'mean_sea_level_pressure': 'psl',
+                                      'toa_incident_solar_radiation': 'rsdt', 
+                                      'total_precipitation': 'pr'},
+                         'plevels': {'geopotential': 'zg',
+                                     'specific_humidity': 'hus',
+                                     'temperature': 'ta',
+                                     'u_component_of_wind': 'ua',
+                                     'v_component_of_wind': 'va'}}
+
 ERA5_SURFACE_VARS = TARGET_SURFACE_VARS = (
     "2m_temperature",
     "mean_sea_level_pressure",
@@ -56,7 +69,7 @@ ERA5_SEA_VARS = ('sea_surface_temperature',)
 ERA5_VARNAME_LOOKUP = {'total_precipitation_6hr': 'total_precipitation',
                        'geopotential_at_surface': 'geopotential'}
 
-
+AOPP_ERA5_DIR = '/network/group/aopp/met_data/MET001_ERA5/data'
 
 
 PRESSURE_LEVELS_ERA5_37 = (
@@ -219,7 +232,8 @@ def load_era5(var: str,
             era_data_dir: str,
             pressure_levels: list=None,
             output_resolution: float=0.25,
-            interpolation_method: str='bilinear'
+            interpolation_method: str='bilinear',
+            use_aopp_data: bool=True
             ):
     """Load ERA5 data, focused towards data that the Graphcast model expects (6 hourly)
 
@@ -239,7 +253,9 @@ def load_era5(var: str,
     Returns:
         _type_: _description_
     """
-    if var in ERA5_SURFACE_VARS + ERA5_STATIC_VARS + ERA5_SEA_VARS:
+    if var in ERA5_STATIC_VARS:
+        data_category = 'static'
+    elif var in ERA5_SURFACE_VARS + ERA5_SEA_VARS:
         data_category = 'surface'
     elif var in ERA5_PLEVEL_VARS:
         data_category = 'plevels'
@@ -247,7 +263,7 @@ def load_era5(var: str,
         raise ValueError(f'Variable {var} not found in possible variable names')
 
 
-    if pressure_levels is not None and data_category == 'surface':
+    if pressure_levels is not None and data_category in ['surface', 'static']:
         pressure_levels = None        
         
     if isinstance(pressure_levels , tuple):
@@ -265,9 +281,24 @@ def load_era5(var: str,
     
     era5_var_name = ERA5_VARNAME_LOOKUP.get(var, var)
 
-    fps = sorted(set([os.path.join(era_data_dir, data_category, era5_var_name, f"{item.strftime('%Y')}/era5_{era5_var_name}_{item.strftime('%Y%m%d')}.nc") for item in datetimes]))
-    
-    da = open_large_dataset(fps=fps, pressure_levels=pressure_levels, datetimes=datetimes)
+    if var in ERA5_STATIC_VARS:
+        ds = xr.load_dataset(os.path.join(era_data_dir, data_category, era5_var_name, f"era5_{era5_var_name}.nc")).isel(time=0)
+        ds = xr.concat([ds]*len(datetimes), 'time')
+        t=1
+    else:
+        fps = sorted(set([os.path.join(era_data_dir, data_category, era5_var_name, f"era5_{era5_var_name}_{item.strftime('%Y%m%d')}.nc") for item in datetimes]))
+    # if use_aopp_data:
+    #     years_to_load = sorted(set([dt.year for dt in datetimes]))
+    #     short_era5_name = ERA5_SHORT_NAME_LOOKUP[data_category].get(era5_var_name)
+
+    #     aopp_fps = sorted(set([os.path.join(AOPP_ERA5_DIR,
+    #                                    f'{short_era5_name}/1hr/{short_era5_name}_1hr_ERA5_{output_resolution}x{output_resolution}_{year}01-{year}12.nc') for year in years_to_load]))
+
+    #     if all([os.path.exists(fp) for fp in aopp_fps]):
+    #         fps = aopp_fps  
+
+        da = open_large_dataset(fps=fps, pressure_levels=pressure_levels, datetimes=datetimes)
+
     da = da[list(da.data_vars)[0]]
 
     # If not in correct output resolution, then regrid
@@ -304,14 +335,14 @@ def load_era5(var: str,
     
     return da
 
-def load_era5_static(year: int, month: int, day: int, hour: int=1, era5_data_dir: str=HI_RES_ERA5_DIR):
+def load_era5_static(era5_data_dir: str=HI_RES_ERA5_DIR):
     
     static_das = []
 
     for var in tqdm(gc.STATIC_VARS):
 
         da = load_era5(var=var,
-                       datetimes=[datetime.datetime(year=year, month=month, day=day, hour=hour)],
+                       datetimes=[datetime.datetime(year=2011, month=1, day=1, hour=1)],
                        era_data_dir=era5_data_dir).load()
         static_das.append(da)
 

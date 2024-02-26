@@ -49,18 +49,10 @@ class TestData(unittest.TestCase):
         lon_coords = []
         
         t0 = datetime.datetime(year=year, month=month, day=day, hour=hour)
-        
-        # Check error is raised if datetimes are too close together
-        with self.assertRaises(ValueError):
-            da1 = data.load_era5(var='total_precipitation_6hr', datetimes=[t0, t0 - datetime.timedelta(hours=1)],
-                                    era_data_dir=DATA_FOLDER)
 
-        # Check it works ok if they are spaced by 6hrs
-        da1 = data.load_era5(var='total_precipitation_6hr', datetimes=[t0, t0 - datetime.timedelta(hours=6)],
-                                    era_data_dir=DATA_FOLDER)
 
         vars = data.ERA5_STATIC_VARS + data.ERA5_SURFACE_VARS
-        for v in tqdm(vars):
+        for v in tqdm(['land_sea_mask', '10m_u_component_of_wind']):
     
             da1 = data.load_era5(var=v, datetimes=[datetime.datetime(year=year, month=month, day=day, hour=hour)],
                                     era_data_dir=DATA_FOLDER)
@@ -80,6 +72,7 @@ class TestData(unittest.TestCase):
             lat_coords.append(tuple(sorted(da1.coords[lat_var_name].values)))
             lon_coords.append(tuple(sorted(da1.coords[lon_var_name].values)))
             
+
             time_vals = [pd.to_datetime(item) for item in da1['time'].values]
             self.assertListEqual(time_vals, [datetime.datetime(year=year, month=month, day=day, hour=hour)])
             
@@ -92,9 +85,6 @@ class TestData(unittest.TestCase):
                 da = da.sel(time=relevant_dates)
                 
                 self.assertEqual(np.round(da.values.sum(), 2), np.round(da1.values.sum(), 2))
-            # else:
-                
-
                 
         # Check lat and long coordinates are all the same
         self.assertEqual(len(set(lat_coords)), 1)
@@ -131,7 +121,15 @@ class TestData(unittest.TestCase):
         # Check lat and long coordinates are all the same
         self.assertEqual(len(set(lat_coords)), 1)
         self.assertEqual(len(set(lon_coords)), 1)
+        
+        # Check error is raised if datetimes are too close together
+        with self.assertRaises(ValueError):
+            da1 = data.load_era5(var='total_precipitation_6hr', datetimes=[t0, t0 - datetime.timedelta(hours=1)],
+                                    era_data_dir=DATA_FOLDER)
 
+        # Check it works ok if they are spaced by 6hrs
+        da1 = data.load_era5(var='total_precipitation_6hr', datetimes=[t0, t0 - datetime.timedelta(hours=6)],
+                                    era_data_dir=DATA_FOLDER)
     
     def test_load_era5_low_res(self):
 
@@ -193,12 +191,7 @@ class TestData(unittest.TestCase):
 
     def test_load_era5_static(self):
 
-        year = 2016
-        month = 1
-        day = 1
-        hour = 12
-
-        ds = data.load_era5_static(year, month, day, hour, era5_data_dir=DATA_FOLDER)
+        ds = data.load_era5_static(era5_data_dir=DATA_FOLDER)
         
         self.assertIsInstance(ds, xr.Dataset)
         

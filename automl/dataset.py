@@ -1,7 +1,6 @@
 import os
 import torch
 import datetime
-import calendar
 import numpy as np
 import xarray as xr
 from torch.utils.data import Dataset
@@ -90,7 +89,6 @@ class ERA5_Dataset(Dataset):
     def __len__(self):
         return len(self.dates)
     
-
     def create_derived_static_fields(self,
                                      dt: datetime.date):
 
