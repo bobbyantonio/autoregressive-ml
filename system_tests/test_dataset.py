@@ -1,6 +1,7 @@
 import sys, os
 import unittest
 import yaml
+import torch
 from tqdm import tqdm
 import datetime
 import tempfile
@@ -53,7 +54,7 @@ class TestDataset(unittest.TestCase):
             target_residuals = data_item[1]
 
             self.assertEqual(inputs[0].shape, inputs[1].shape)
-            self.assertEqual(inputs[0].shape, (len(data_config.input_fields), 721, 1440))
+            self.assertEqual(inputs[0].shape, (len(data_config.input_fields) + len(data.GENERATED_FORCING_VARS), 721, 1440))
             self.assertEqual(target_residuals.shape, (len(data_config.target_fields), 721, 1440))
 
             for n, f in enumerate(data_config.input_fields):
@@ -63,24 +64,37 @@ class TestDataset(unittest.TestCase):
                 if f in data.ERA5_PLEVEL_VARS:
                     for pl in data_config.pressure_levels:
                         expected_val = (da.sel(level=pl).values[0,...] - mean_by_level[f].sel(level=pl).item()) / stddev_by_level[f].sel(level=pl).item()
-                        self.assertTrue(np.allclose(expected_val, inputs[0][n,...]))
+                        expected_val = torch.tensor(expected_val)
+                        self.assertTrue(np.allclose(expected_val, inputs[0][n,...], atol=1e-6))
                 else:
                     expected_val = (da.values[0,...] - mean_by_level[f].item()) / stddev_by_level[f].item()
-                    self.assertTrue(np.allclose(expected_val, inputs[0][n,...]))
+                    expected_val = torch.tensor(expected_val)
+                    self.assertTrue(np.allclose(expected_val, inputs[0][n,...], atol=1e-6))
 
-                da_plus6 = data.load_era5(var=f, datetimes=[dt - datetime.timedelta(hours=6)], era_data_dir=data_config.paths['ERA5'],
+                da_minus6 = data.load_era5(var=f, datetimes=[dt - datetime.timedelta(hours=6)], era_data_dir=data_config.paths['ERA5'],
                                     pressure_levels=data_config.pressure_levels).compute()
 
                 if f in data.ERA5_PLEVEL_VARS:
                     for pl in data_config.pressure_levels:
-                        expected_val = (da_plus6.sel(level=pl).values[0,...] - mean_by_level[f].sel(level=pl).item()) / stddev_by_level[f].sel(level=pl).item()
-                        self.assertTrue(np.allclose(expected_val, inputs[1][n,...]))
+                        expected_val = (da_minus6.sel(level=pl).values[0,...] - mean_by_level[f].sel(level=pl).item()) / stddev_by_level[f].sel(level=pl).item()
+                        expected_val = torch.tensor(expected_val)
+                        self.assertTrue(np.allclose(expected_val, inputs[1][n,...], atol=1e-6))
                 else:
-                    expected_val = (da_plus6.values[0,...] - mean_by_level[f].item()) / stddev_by_level[f].item()
-                    self.assertTrue(np.allclose(expected_val, inputs[1][n,...]))
+                    expected_val = (da_minus6.values[0,...] - mean_by_level[f].item()) / stddev_by_level[f].item()
+                    expected_val = torch.tensor(expected_val)
+                    self.assertTrue(np.allclose(expected_val, inputs[1][n,...], atol=1e-6))
             
             # Check static derived fields
-            
+            for n, f in enumerate(data.GENERATED_FORCING_VARS):
+
+                self.assertLessEqual(inputs[0][len(data_config.input_fields) + n,...].max(), 1.42)
+                self.assertLessEqual(inputs[1][len(data_config.input_fields) + n,...].max(), 1.42)
+
+                self.assertGreaterEqual(inputs[0][len(data_config.input_fields) + n,...].max(), -1.42)
+                self.assertGreaterEqual(inputs[1][len(data_config.input_fields) + n,...].max(), -1.42)
+
+                if data.GENERATED_FORCING_VARS[n].startswith('day'):
+                    self.assertFalse(np.allclose(inputs[1][len(data_config.input_fields) + n,...], inputs[0][len(data_config.input_fields) + n,...]))
             
             for n, f in enumerate(data_config.target_fields):
                 da = data.load_era5(var=f, datetimes=[dt + datetime.timedelta(hours=6)], era_data_dir=data_config.paths['ERA5'],
@@ -88,7 +102,8 @@ class TestDataset(unittest.TestCase):
                 da_0 = data.load_era5(var=f, datetimes=[dt], era_data_dir=data_config.paths['ERA5'],
                                     pressure_levels=data_config.pressure_levels).compute()
                 expected_val = (da.values[0,...] - da_0.values[0,...]) / diffs_stddev_by_level[f].item()
-                self.assertTrue(np.allclose(expected_val, target_residuals[n,...]))
+                expected_val = torch.tensor(expected_val)
+                self.assertTrue(np.allclose(expected_val, target_residuals[n,...], atol=1e-6))
 
     def test_load_data_by_datetime(self):
 
@@ -100,11 +115,7 @@ class TestDataset(unittest.TestCase):
         for n, f in enumerate(data_config.input_fields):
             da = data.load_era5(var=f, datetimes=[dt], era_data_dir=data_config.paths['ERA5'],
                                 pressure_levels=data_config.pressure_levels).compute()
-            self.assertTrue(np.allclose(da.values[0,...], inputs['input_t0'][n,...]))
-
-            da_plus6 = data.load_era5(var=f, datetimes=[dt - datetime.timedelta(hours=6)], era_data_dir=data_config.paths['ERA5'],
-                                pressure_levels=data_config.pressure_levels).compute()
-            self.assertTrue(np.allclose(da_plus6.values[0,...], inputs['input_tm6h'][n,...]))
+            self.assertTrue(np.allclose(da.values[0,...], inputs[n,...]))
         
         for n, f in enumerate(data_config.target_fields):
             da = data.load_era5(var=f, datetimes=[dt + datetime.timedelta(hours=6)], era_data_dir=data_config.paths['ERA5'],

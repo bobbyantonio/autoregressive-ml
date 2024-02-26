@@ -27,10 +27,9 @@ def load_data_by_datetime(dt: datetime.datetime,
                           data_config: SimpleNamespace,
                           change_types: bool=False):
 
-    # Gather data at t=0 and t=-6h for inputs, +6h for targets
+    # Gather data at t=0 for inputs, +6h for targets
     arrs = {}
     input_dts = {'input_t0': {'datetime': dt, 'fields': data_config.input_fields}, 
-                'input_tm6h': {'datetime': dt - datetime.timedelta(hours=6), 'fields': data_config.input_fields},
                 'targets': {'datetime': dt + datetime.timedelta(hours=6), 'fields': data_config.target_fields},
                 'targets_refs': {'datetime': dt, 'fields': data_config.target_fields}} # reference data for calculating residuals
 
@@ -63,7 +62,7 @@ def load_data_by_datetime(dt: datetime.datetime,
 
         arrs[datatype] = np.concatenate(arrs[datatype])
 
-    inputs = {k: v for k, v in arrs.items() if k.startswith('input')}
+    inputs = arrs['input_t0']
     target_residuals = arrs['targets'] -  arrs['targets_refs']
 
     return inputs, target_residuals
@@ -103,7 +102,7 @@ if __name__ == '__main__':
                     
                     # Exclude datapoints at extreme ends of year, to avoid mixing with other datasets
                     # (Assumes that data is split by year)
-                    if (dt - datetime.timedelta(hours=6)).year != y or (dt + datetime.timedelta(hours=6)).year != y:
+                    if (dt + datetime.timedelta(hours=6)).year != y:
                         continue
 
                     inputs, targets = load_data_by_datetime(dt=dt, data_config=data_config)
@@ -119,10 +118,9 @@ if __name__ == '__main__':
                     # TODO: saving a concatenated np array to a .npy file is faster than this
                     # but I expect there to be advantages of the torch loading function for ML applications.
                     # Something to experiment with if IO is slow, but order of ms so probably not a big deal
-                    with warnings.catch_warnings():
-                        warnings.filterwarnings('ignore', category=UserWarning) # To filter out PyTorch user warning
-                        input_tensor = torch.tensor([inputs['input_t0'], inputs['input_tm6h']])
-                        target_tensor = torch.tensor(targets)
+
+                    input_tensor = torch.tensor(inputs)
+                    target_tensor = torch.tensor(targets)
 
                     torch.save(input_tensor, inputs_fp)
                     torch.save(target_tensor, targets_fp)

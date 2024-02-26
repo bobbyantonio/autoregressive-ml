@@ -38,13 +38,13 @@ ERA5_PLEVEL_VARS = (
 )
 
 GENERATED_FORCING_VARS = (
+    "latitude_sin",
+    "longitude_cos",
+    "longitude_sin",
     "year_progress_sin",
     "year_progress_cos",
     "day_progress_sin",
     "day_progress_cos",
-    "latitude_sin",
-    "longitude_cos",
-    "longitude_sin"
 )
 
 ERA5_STATIC_VARS = (
