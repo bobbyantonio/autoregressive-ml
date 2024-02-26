@@ -79,6 +79,9 @@ class TestDataset(unittest.TestCase):
                     expected_val = (da_plus6.values[0,...] - mean_by_level[f].item()) / stddev_by_level[f].item()
                     self.assertTrue(np.allclose(expected_val, inputs[1][n,...]))
             
+            # Check static derived fields
+            
+            
             for n, f in enumerate(data_config.target_fields):
                 da = data.load_era5(var=f, datetimes=[dt + datetime.timedelta(hours=6)], era_data_dir=data_config.paths['ERA5'],
                                     pressure_levels=data_config.pressure_levels).compute()

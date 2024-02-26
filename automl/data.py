@@ -1,6 +1,8 @@
 import os, sys
 import datetime
 import dask
+import calendar
+
 import xarray as xr
 os.environ['ESMFMKFILE'] = '/home/a/antonio/nobackups/miniforge3/envs/graphcast/lib/esmf.mk'
 
@@ -15,6 +17,8 @@ from graphcast import graphcast as gc
 HOME = Path(__file__).parents[1]
 HI_RES_ERA5_DIR = '/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5'
 LOW_RES_ERA5_DIR = '/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5_1deg/bilinear'
+
+SECONDS_IN_DAY = 24*60*60
 
 ERA5_SURFACE_VARS = TARGET_SURFACE_VARS = (
     "2m_temperature",
@@ -32,6 +36,17 @@ ERA5_PLEVEL_VARS = (
     "vertical_velocity",
     "specific_humidity",
 )
+
+GENERATED_FORCING_VARS = (
+    "year_progress_sin",
+    "year_progress_cos",
+    "day_progress_sin",
+    "day_progress_cos",
+    "latitude_sin",
+    "longitude_cos",
+    "longitude_sin"
+)
+
 ERA5_STATIC_VARS = (
     "geopotential_at_surface",
     "land_sea_mask",
@@ -40,6 +55,9 @@ ERA5_SEA_VARS = ('sea_surface_temperature',)
 
 ERA5_VARNAME_LOOKUP = {'total_precipitation_6hr': 'total_precipitation',
                        'geopotential_at_surface': 'geopotential'}
+
+
+
 
 PRESSURE_LEVELS_ERA5_37 = (
     1, 2, 3, 5, 7, 10, 20, 30, 50, 70, 100, 125, 150, 175, 200, 225, 250, 300,
@@ -176,8 +194,26 @@ def open_large_dataset(fps: list[str],
     
     return ds
     
-    
+def get_year_progress(dt: datetime.datetime):
 
+    dt_0 = datetime.datetime(dt.year,1,1,0)
+    t_delta = (dt - dt_0)
+
+    total_year_seconds = (365 + calendar.isleap(dt.year))*SECONDS_IN_DAY
+    year_progress = t_delta.total_seconds() / total_year_seconds
+
+    return year_progress
+
+def get_day_progress(dt: datetime.datetime):
+
+    dt_0 = datetime.datetime(dt.year,1,1,0)
+    t_delta = (dt - dt_0)
+
+    day_progress = t_delta.seconds / SECONDS_IN_DAY
+
+    return day_progress
+    
+    
 def load_era5(var: str,
             datetimes: list,
             era_data_dir: str,
