@@ -52,7 +52,7 @@ class TestData(unittest.TestCase):
 
 
         vars = data.ERA5_STATIC_VARS + data.ERA5_SURFACE_VARS
-        for v in tqdm(['land_sea_mask', '10m_u_component_of_wind']):
+        for v in tqdm(vars):
     
             da1 = data.load_era5(var=v, datetimes=[datetime.datetime(year=year, month=month, day=day, hour=hour)],
                                     era_data_dir=DATA_FOLDER)

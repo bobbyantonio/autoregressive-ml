@@ -283,8 +283,11 @@ def load_era5(var: str,
 
     if var in ERA5_STATIC_VARS:
         ds = xr.load_dataset(os.path.join(era_data_dir, data_category, era5_var_name, f"era5_{era5_var_name}.nc")).isel(time=0)
-        ds = xr.concat([ds]*len(datetimes), 'time')
-        t=1
+        
+        if datetimes is not None:
+            ds = xr.concat([ds]*len(datetimes), 'time')
+            ds['time'] = np.array(datetimes)
+
     else:
         fps = sorted(set([os.path.join(era_data_dir, data_category, era5_var_name, f"era5_{era5_var_name}_{item.strftime('%Y%m%d')}.nc") for item in datetimes]))
     # if use_aopp_data:
@@ -297,9 +300,9 @@ def load_era5(var: str,
     #     if all([os.path.exists(fp) for fp in aopp_fps]):
     #         fps = aopp_fps  
 
-        da = open_large_dataset(fps=fps, pressure_levels=pressure_levels, datetimes=datetimes)
+        ds = open_large_dataset(fps=fps, pressure_levels=pressure_levels, datetimes=datetimes)
 
-    da = da[list(da.data_vars)[0]]
+    da = ds[list(ds.data_vars)[0]]
 
     # If not in correct output resolution, then regrid
     # Here we assume that resolution is uniform, and that resolution doesn't go below the 4th decimal place
@@ -342,7 +345,7 @@ def load_era5_static(era5_data_dir: str=HI_RES_ERA5_DIR):
     for var in tqdm(gc.STATIC_VARS):
 
         da = load_era5(var=var,
-                       datetimes=[datetime.datetime(year=2011, month=1, day=1, hour=1)],
+                       datetimes=None,
                        era_data_dir=era5_data_dir).load()
         static_das.append(da)
 
