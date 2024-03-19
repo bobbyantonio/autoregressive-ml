@@ -50,7 +50,8 @@ GRAPHCAST_DIR = '/home/a/antonio/repos/graphcast-ox'
 HI_RES_ERA5_DIR ='/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5'
 LOW_RES_ERA5_DIR = '/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5_1deg/bilinear'
 OUTPUT_VARS = [
-    '2m_temperature', 'total_precipitation_6hr', '10m_v_component_of_wind', '10m_u_component_of_wind', 'specific_humidity', 'temperature'
+    '2m_temperature', 'total_precipitation_6hr', '10m_v_component_of_wind', 
+    '10m_u_component_of_wind', 'specific_humidity', 'temperature', 'geopotential'
 ]
 NONEGATIVE_VARS = [
     "2m_temperature",
@@ -281,7 +282,7 @@ if __name__ == '__main__':
     if not args.cache_inputs or not os.path.exists('cached_inputs.nc'):
         ########
         # Static variables
-        static_ds = data.load_era5_static(year=year, month=month, day=day, hour=hour_start, era5_data_dir=surface_vars_dir)
+        static_ds = data.load_era5_static(era5_data_dir=surface_vars_dir)
 
         ######
         # Surface
@@ -561,7 +562,7 @@ if __name__ == '__main__':
         fp = os.path.join(save_dir, 
                           f'pred_{year}{month:02d}{day:02d}_n{chunk_index}.nc')
 
-        prediction[OUTPUT_VARS].sel(level=[1000,850]).to_netcdf(fp)
+        prediction[OUTPUT_VARS].sel(level=[1000,850,500]).to_netcdf(fp)
         del prediction
         
     logger.info('Complete')

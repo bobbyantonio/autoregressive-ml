@@ -7,10 +7,10 @@ conda activate graphcast
 # for year in 2016
 # do  
 #     echo "Evaluating year $year"
-#     for month in 1 2 7 8
+#     for month in 1 7
 #     do  
 #         echo "Evaluating month $month"
-#         for day in 1 15
+#         for day in 1
 #         do  
             
 #             python -m automl.autoregression --output-dir /network/group/aopp/predict/HMC005_ANTONIO_EERIE/predictions --num-steps 320 --year $year --month $month --day $day --hour-start 18
@@ -53,3 +53,5 @@ do
         python -m automl.autoregression --output-dir /network/group/aopp/predict/HMC005_ANTONIO_EERIE/predictions/low_res_${lowresvar} --num-steps 40 --year 2016 --month ${month} --day 1 --hour-start 18 --low-res-var ${lowresvar}
     done
 done
+
+python -m automl.autoregression --output-dir /network/group/aopp/predict/HMC005_ANTONIO_EERIE/predictions/basic --num-steps 320 --year 2016 --month 1 --day 1 --hour-start 18 

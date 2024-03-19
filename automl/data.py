@@ -350,7 +350,6 @@ def load_era5_static(era5_data_dir: str=HI_RES_ERA5_DIR):
         static_das.append(da)
 
     static_ds = xr.merge(static_das)
-    static_ds = static_ds.isel(time=0)
     static_ds = static_ds.drop_vars('time')
     
     return static_ds

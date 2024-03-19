@@ -27,8 +27,8 @@
             "request": "launch",
             "module": "automl.autoregression",
             "justMyCode": false,
-            "args": ["--output-dir", "/home/a/antonio/repos/graphcast-ox/dataset/predictions", "--surface-vars-dir", "/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5", "--plevel-vars-dir", "/network/group/aopp/predict/HMC005_ANTONIO_EERIE/era5_1deg/bilinear", "--num-steps", 
-            "5", "--year", "2016", "--month", "1", "--day", "1", "--hour", "18", "--var-to-replace", "sea_surface_temperature", "--replace-uses-lsm"]
+            "args": ["--output-dir", "/network/group/aopp/predict/HMC005_ANTONIO_EERIE/predictions/test", "--num-steps", 
+            "5", "--year", "2016", "--month", "1", "--day", "1", "--hour", "18", "--low-res-var", "temperature"]
         },
         {
             "name": "regrid",
