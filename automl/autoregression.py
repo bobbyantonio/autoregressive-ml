@@ -61,15 +61,10 @@ NONEGATIVE_VARS = [
     "specific_humidity",
 ]
 
-params_file = SimpleNamespace(value=os.path.join(GRAPHCAST_DIR, 'params/params_GraphCast-ERA5_1979-2017-resolution_0.25-pressure_levels_37-mesh_2to6-precipitation_input_and_output.npz'))
+PARAMS_FILE_LOOKUP = {'full': 'params/params_GraphCast-ERA5_1979-2017-resolution_0.25-pressure_levels_37-mesh_2to6-precipitation_input_and_output.npz',
+                      'small': 'params_GraphCast_small-ERA5_1979-2015-resolution_1.0-pressure_levels_13-mesh_2to5-precipitation_input_and_output.npz',
+                      'operational': 'params_GraphCast_operational-ERA5-HRES_1979-2021-resolution_0.25-pressure_levels_13-mesh_2to6-precipitation_output_only.npz'}
 
-    # @title Load the model
-with open(f"{params_file.value}", 'rb') as f:
-    ckpt = checkpoint.load(f, gc.CheckPoint)
-params = ckpt.params
-
-model_config = ckpt.model_config
-task_config = ckpt.task_config
 
 with open(os.path.join(GRAPHCAST_DIR, "stats/diffs_stddev_by_level.nc"),"rb") as f:
     diffs_stddev_by_level = xr.load_dataset(f).compute()
@@ -189,26 +184,6 @@ def grads_fn(params, state, model_config, task_config, inputs, targets, forcings
         _aux, has_aux=True)(params, state, inputs, targets, forcings)
     return loss, diagnostics, next_state, grads
 
-# Jax doesn't seem to like passing configs as args through the jit. Passing it
-# in via partial (instead of capture by closure) forces jax to invalidate the
-# jit cache if you change configs.
-def with_configs(fn):
-    return functools.partial(
-        fn, model_config=model_config, task_config=task_config)
-
-state = {}
-# Always pass params and state, so the usage below are simpler
-def with_params(fn):
-    return functools.partial(fn, params=params, state=state)
-
-# Our models aren't stateful, so the state is always empty, so just return the
-# predictions. This is requiredy by our rollout code, and generally simpler.
-def drop_state(fn):
-    return lambda **kw: fn(**kw)[0]
-
-
-run_forward_jitted = drop_state(with_params(jax.jit(with_configs(
-        run_forward.apply))))
 
 
 
@@ -217,6 +192,8 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--output-dir', type=str, required=True,
                         help="Folder to save to")
+    parser.add_argument('--model-type', type=str, required=True,
+                        help="Which graphcast model to use", choices=list(PARAMS_FILE_LOOKUP.keys()))
     parser.add_argument('--num-steps', type=int, required=True,
                         help='Number of autoregressive steps to run for')
     parser.add_argument('--year', type=int, required=True,
@@ -250,6 +227,36 @@ if __name__ == '__main__':
     month = args.month
     day = args.day
 
+    ########### Choose Graphcast model
+    # @title Load the model
+    with open(os.path.join(GRAPHCAST_DIR, PARAMS_FILE_LOOKUP[args.model_type]), 'rb') as f:
+        ckpt = checkpoint.load(f, gc.CheckPoint)
+    params = ckpt.params
+
+    model_config = ckpt.model_config
+    task_config = ckpt.task_config
+
+    # Jax doesn't seem to like passing configs as args through the jit. Passing it
+    # in via partial (instead of capture by closure) forces jax to invalidate the
+    # jit cache if you change configs.
+    def with_configs(fn):
+        return functools.partial(
+            fn, model_config=model_config, task_config=task_config)
+
+    state = {}
+    # Always pass params and state, so the usage below are simpler
+    def with_params(fn):
+        return functools.partial(fn, params=params, state=state)
+
+    # Our models aren't stateful, so the state is always empty, so just return the
+    # predictions. This is requiredy by our rollout code, and generally simpler.
+    def drop_state(fn):
+        return lambda **kw: fn(**kw)[0]
+
+
+    run_forward_jitted = drop_state(with_params(jax.jit(with_configs(
+            run_forward.apply))))
+
     
     if day == -1:
         day = monthrange(year=year, month=month)[-1]
@@ -269,7 +276,7 @@ if __name__ == '__main__':
         plevel_vars_dir = HI_RES_ERA5_DIR
     
     surface_vars_dir = HI_RES_ERA5_DIR
-        
+    
     
     print(f'Running for {year}-{month:02d}-{day:02d} {hour_start}')
     
@@ -563,6 +570,7 @@ if __name__ == '__main__':
                           f'pred_{year}{month:02d}{day:02d}_n{chunk_index}.nc')
 
         prediction[OUTPUT_VARS].sel(level=[1000,850,500]).to_netcdf(fp)
+        prediction.close()
         del prediction
         
     logger.info('Complete')
