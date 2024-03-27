@@ -3,8 +3,8 @@
 source ~/.bashrc
 conda activate graphcast
 
-# python -m automl.autoregression --output-dir /network/group/aopp/predict/HMC005_ANTONIO_EERIE/low_res_plevel_hi_res_surface_conservative--num-steps 320 --year 2016 --month 1 --day 1 --hour-start 18 
-# for year in 2016
+# python -m automl.autoregression --output-dir /network/group/aopp/predict/HMC005_ANTONIO_EERIE/low_res_plevel_hi_res_surface_conservative --num-steps 320 --year 2016 --month 1 --day 1 --hour-start 18 
+# for year in 2011 2012 2013 2014 2015 2016
 # do  
 #     echo "Evaluating year $year"
 #     for month in 1 7
@@ -13,7 +13,7 @@ conda activate graphcast
 #         for day in 1
 #         do  
             
-#             python -m automl.autoregression --output-dir /network/group/aopp/predict/HMC005_ANTONIO_EERIE/predictions --num-steps 320 --year $year --month $month --day $day --hour-start 18
+#             python -m automl.autoregression --output-dir /network/group/aopp/predict/HMC005_ANTONIO_EERIE/predictions/basic --num-steps 320 --year $year --month $month --day $day --hour-start 18
 #         done
 #     done
 # done
@@ -45,13 +45,15 @@ conda activate graphcast
 
 # Sensitity testing for low res variables
 
-for lowresvar in temperature geopotential u_component_of_wind v_component_of_wind vertical_velocity specific_humidity
+model_type="operational"
+for lowresvar in temperature u_component_of_wind v_component_of_wind vertical_velocity specific_humidity
 do
     echo "Evaluating $lowresvar as low res"
-    for month in 1 7
+    for month in 1
     do
-        python -m automl.autoregression --output-dir /network/group/aopp/predict/HMC005_ANTONIO_EERIE/predictions/low_res_${lowresvar} --num-steps 40 --year 2016 --month ${month} --day 1 --hour-start 18 --low-res-var ${lowresvar}
+        rm /network/group/aopp/predict/HMC005_ANTONIO_EERIE/predictions/${model_type}/low_res_${lowresvar}/pred_201601*
+        python -m automl.autoregression --output-dir /network/group/aopp/predict/HMC005_ANTONIO_EERIE/predictions/${model_type}/low_res_${lowresvar} --num-steps 10 --year 2016 --month ${month} --day 1 --hour-start 18 --low-res-var ${lowresvar};
     done
 done
 
-python -m automl.autoregression --output-dir /network/group/aopp/predict/HMC005_ANTONIO_EERIE/predictions/basic --num-steps 320 --year 2016 --month 1 --day 1 --hour-start 18 
+# python -m automl.autoregression --output-dir /network/group/aopp/predict/HMC005_ANTONIO_EERIE/predictions/basic --num-steps 320 --year 2016 --month 1 --day 1 --hour-start 18 

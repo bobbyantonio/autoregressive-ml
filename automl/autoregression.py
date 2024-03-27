@@ -186,13 +186,18 @@ def grads_fn(params, state, model_config, task_config, inputs, targets, forcings
 
 
 
+# Our models aren't stateful, so the state is always empty, so just return the
+# predictions. This is requiredy by our rollout code, and generally simpler.
+def drop_state(fn):
+    return lambda **kw: fn(**kw)[0]
+
 
 if __name__ == '__main__':
     
     parser = ArgumentParser()
     parser.add_argument('--output-dir', type=str, required=True,
                         help="Folder to save to")
-    parser.add_argument('--model-type', type=str, required=True,
+    parser.add_argument('--model-type', type=str, default='full',
                         help="Which graphcast model to use", choices=list(PARAMS_FILE_LOOKUP.keys()))
     parser.add_argument('--num-steps', type=int, required=True,
                         help='Number of autoregressive steps to run for')
@@ -226,6 +231,7 @@ if __name__ == '__main__':
     year = args.year
     month = args.month
     day = args.day
+    output_dir = os.path.join(args.output_dir, args.model_type)
 
     ########### Choose Graphcast model
     # @title Load the model
@@ -247,12 +253,6 @@ if __name__ == '__main__':
     # Always pass params and state, so the usage below are simpler
     def with_params(fn):
         return functools.partial(fn, params=params, state=state)
-
-    # Our models aren't stateful, so the state is always empty, so just return the
-    # predictions. This is requiredy by our rollout code, and generally simpler.
-    def drop_state(fn):
-        return lambda **kw: fn(**kw)[0]
-
 
     run_forward_jitted = drop_state(with_params(jax.jit(with_configs(
             run_forward.apply))))
@@ -296,8 +296,17 @@ if __name__ == '__main__':
         surface_ds = data.load_era5_surface(year=year, month=month, day=day, hour=hour_start, era5_data_dir=surface_vars_dir)
 
         #############
-        # Pressure levels 
-        plevel_ds = data.load_era5_plevel(year=year, month=month, day=day, hour=hour_start, era5_data_dir=plevel_vars_dir, low_res_vars=[args.low_res_var])
+        # Pressure levels
+        if args.model_type in ['small', 'operational']:
+            plevels = gc.PRESSURE_LEVELS_WEATHERBENCH_13
+        else:
+            plevels = gc.PRESSURE_LEVELS_ERA5_37
+            
+        plevel_ds = data.load_era5_plevel(year=year, month=month, day=day, 
+                                          hour=hour_start, 
+                                          era5_data_dir=plevel_vars_dir, 
+                                          low_res_vars=[args.low_res_var],
+                                          pressure_levels=plevels)
         prepared_ds = xr.merge([static_ds, surface_ds, plevel_ds])
         prepared_ds = convert_to_relative_time(prepared_ds, prepared_ds['time'][1])
 
@@ -399,10 +408,10 @@ if __name__ == '__main__':
     if args.var_to_replace is not None:
         
         suffix= '_lsm' if args.replace_uses_lsm else ''
-        save_dir = os.path.join(args.output_dir, f'replace_{args.var_to_replace}{suffix}')
+        save_dir = os.path.join(output_dir, f'replace_{args.var_to_replace}{suffix}')
     
     else:
-        save_dir = args.output_dir
+        save_dir = output_dir
     os.makedirs(save_dir, exist_ok=True)
     args_dict = vars(args)
 
@@ -563,8 +572,6 @@ if __name__ == '__main__':
 
         current_inputs = rollout._get_next_inputs(current_inputs, next_frame)
         prediction = prediction.assign_coords(time=actual_target_relative_time+t0)
-        
-
         
         fp = os.path.join(save_dir, 
                           f'pred_{year}{month:02d}{day:02d}_n{chunk_index}.nc')
